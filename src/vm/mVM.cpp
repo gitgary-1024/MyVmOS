@@ -1,5 +1,6 @@
 #include "vm/mVM.h"
 #include "vm/VmManager.h"
+#include "log/Logging.h"
 #include <iostream>
 #include <chrono>
 #include <thread>
@@ -17,6 +18,7 @@ mVM::mVM(uint64_t vm_id) : baseVM(vm_id), running_(false), pending_input_reg_(-1
     });
     
     std::cout << "[VM " << vm_id << "] Created" << std::endl;
+    LOG_INFO_MOD("VM", (std::string("Created VM ") + std::to_string(vm_id)).c_str());
 }
 
 void mVM::start() {
@@ -30,7 +32,7 @@ void mVM::start() {
     {
         std::lock_guard<std::mutex> lock(exec_mtx);
         state_ = VMState::RUNNING;
-        std::cout << "[VM " << vm_id_ << "] State set to RUNNING" << std::endl;
+        LOG_INFO_MOD("VM", (std::string("VM ") + std::to_string(vm_id_) + " state set to RUNNING").c_str());
     }
     
     running_.store(true, std::memory_order_relaxed);
@@ -105,16 +107,22 @@ bool mVM::execute_instruction() {
     std::cout << "[VM " << vm_id_ << "] Executing instruction at PC=" << (pc_-1) 
               << ", raw_inst=0x" << std::hex << inst << std::dec
               << ", opcode=" << static_cast<int>(op) << ", r1=" << r1 << std::endl;
+    LOG_INFO_MOD("VM", (std::string("Executing instruction at PC=") + std::to_string(pc_-1) + 
+                       ", opcode=" + std::to_string(static_cast<int>(op)) + 
+                       ", r1=" + std::to_string(r1)).c_str());
 
     std::cout << "[VM " << vm_id_ << "] Entering switch statement, op=" << static_cast<int>(op) << std::endl;
+    LOG_INFO_MOD("VM", (std::string("Entering switch, op=") + std::to_string(static_cast<int>(op))).c_str());
     
     switch (op) {
         case Opcode::NOP:
             std::cout << "[VM " << vm_id_ << "] Executing NOP" << std::endl;
+            LOG_INFO_MOD("VM", "Executing NOP");
             break;
 
         case Opcode::ADD:
             std::cout << "[VM " << vm_id_ << "] Executing ADD" << std::endl;
+            LOG_INFO_MOD("VM", "Executing ADD");
             if (r1 < NUM_REGISTERS && r2 < NUM_REGISTERS) {
                 registers_[r1] += registers_[r2];
             }
@@ -122,36 +130,43 @@ bool mVM::execute_instruction() {
 
         case Opcode::INPUT:
             std::cout << "[VM " << vm_id_ << "] INPUT instruction: saving to reg " << r1 << std::endl;
+            LOG_INFO_MOD("VM", (std::string("INPUT instruction: saving to reg ") + std::to_string(r1)).c_str());
             // ✅ 保存目标寄存器索引
             pending_input_reg_ = static_cast<int>(r1);
             send_interrupt_request(3, 2000); // periph_id=3 for Terminal
             state_ = VMState::SUSPENDED_WAITING_INTERRUPT;
             std::cout << "[VM " << vm_id_ << "] State changed to SUSPENDED_WAITING_INTERRUPT" << std::endl;
+            LOG_INFO_MOD("VM", "State changed to SUSPENDED_WAITING_INTERRUPT");
             return false;
 
         case Opcode::OUTPUT:
             std::cout << "[VM " << vm_id_ << "] Executing OUTPUT" << std::endl;
+            LOG_INFO_MOD("VM", "Executing OUTPUT");
             send_interrupt_request(3, 2000); // periph_id=3 for Terminal
             state_ = VMState::SUSPENDED_WAITING_INTERRUPT;
             return false;
 
         case Opcode::HALT:
             std::cout << "[VM " << vm_id_ << "] HALT instruction" << std::endl;
+            LOG_INFO_MOD("VM", "HALT instruction");
             return false;
 
         default:
             std::cout << "[VM " << vm_id_ << "] Unknown opcode: " << static_cast<int>(op) << std::endl;
+            LOG_INFO_MOD("VM", (std::string("Unknown opcode: ") + std::to_string(static_cast<int>(op))).c_str());
             registers_[0] = -3;
             return false;
     }
     
     std::cout << "[VM " << vm_id_ << "] Exiting switch statement" << std::endl;
+    LOG_INFO_MOD("VM", "Exiting switch statement");
 
     return true;
 }
 
 void mVM::handle_interrupt(const InterruptResult& result) {
     std::cout << "[VM " << vm_id_ << "] handle_interrupt called with return_value=" << result.return_value << std::endl;
+    LOG_INFO_MOD("VM", (std::string("handle_interrupt called with return_value=") + std::to_string(result.return_value)).c_str());
     std::lock_guard<std::mutex> lock(exec_mtx);
     if (result.is_timeout) {
         registers_[0] = -1;
@@ -160,17 +175,20 @@ void mVM::handle_interrupt(const InterruptResult& result) {
         if (pending_input_reg_ >= 0 && pending_input_reg_ < static_cast<int>(NUM_REGISTERS)) {
             registers_[pending_input_reg_] = result.return_value;
             std::cout << "[VM " << vm_id_ << "] Stored " << result.return_value << " in register " << pending_input_reg_ << std::endl;
+            LOG_INFO_MOD("VM", (std::string("Stored ") + std::to_string(result.return_value) + " in register " + std::to_string(pending_input_reg_)).c_str());
         }
     }
     pending_input_reg_ = -1; // 重置
     state_ = VMState::RUNNING; // 恢复运行状态
     std::cout << "[VM " << vm_id_ << "] State changed to RUNNING" << std::endl;
+    LOG_INFO_MOD("VM", "State changed to RUNNING");
 
     // 发送唤醒消息
     Message notify_msg(vm_id_, MODULE_SCHEDULER, MessageType::VM_WAKEUP_NOTIFY);
     VMWakeUpNotify wake{vm_id_};
     notify_msg.set_payload(wake);
     std::cout << "[VM " << vm_id_ << "] Sending VM_WAKEUP_NOTIFY" << std::endl;
+    LOG_INFO_MOD("VM", "Sending VM_WAKEUP_NOTIFY");
     route_send(notify_msg);
 }
 
@@ -179,5 +197,6 @@ void mVM::on_wakeup() {
     if (state_ == VMState::SUSPENDED_WAITING_INTERRUPT) {
         state_ = VMState::RUNNING;
         std::cout << "[VM " << vm_id_ << "] Woken up from interrupt wait" << std::endl;
+        LOG_INFO_MOD("VM", "Woken up from interrupt wait");
     }
 }

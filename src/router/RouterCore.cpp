@@ -1,4 +1,5 @@
 #include "../../include/router/RouterCore.h"
+#include "log/Logging.h"
 #include <iostream>
 
 RouterCore& RouterCore::instance() {
@@ -8,19 +9,19 @@ RouterCore& RouterCore::instance() {
 
 void RouterCore::register_module(uint64_t module_id, const std::string& name) {
     module_names[module_id] = name;
-    std::cout << "[Router] Register module: " << name << " (ID: " << module_id << ")" << std::endl;
+    LOG_INFO_MOD("Router", (std::string("Register module: ") + name + " (ID: " + std::to_string(module_id) + ")").c_str());
 }
 
 void RouterCore::subscribe(MessageType type, std::function<void(const Message&)> callback) {
     std::lock_guard<std::mutex> lock(subscriber_mtx);
     subscribers[type].push_back(callback);
-    std::cout << "[Router] Subscriber registered for message type: " << static_cast<int>(type) << std::endl;
+    LOG_INFO_MOD("Router", (std::string("Subscriber registered for message type: ") + std::to_string(static_cast<int>(type))).c_str());
 }
 
 void RouterCore::subscribe_from(uint64_t sender_id, std::function<void(const Message&)> callback) {
     std::lock_guard<std::mutex> lock(subscriber_mtx);
     sender_subscribers[sender_id].push_back(callback);
-    std::cout << "[Router] Subscriber registered for sender: " << sender_id << std::endl;
+    LOG_INFO_MOD("Router", (std::string("Subscriber registered for sender: ") + std::to_string(sender_id)).c_str());
 }
 
 bool RouterCore::send(const Message& msg) {
@@ -29,7 +30,7 @@ bool RouterCore::send(const Message& msg) {
     if (success) {
         queue_size.fetch_add(1, std::memory_order_relaxed);
     } else {
-        std::cerr << "[Router] Queue full, message dropped!" << std::endl;
+        LOG_ERR_MOD("Router", "Queue full, message dropped!");
     }
     return success;
 }
@@ -50,7 +51,7 @@ void RouterCore::start_polling() {
     
     running.store(true, std::memory_order_relaxed);
     polling_thread = std::thread(&RouterCore::polling_loop, this);
-    std::cout << "[Router] Polling thread started on core 0" << std::endl;
+    LOG_INFO_MOD("Router", "Polling thread started on core 0");
 }
 
 void RouterCore::stop() {
@@ -64,7 +65,7 @@ void RouterCore::stop() {
         polling_thread.join();
     }
     
-    std::cout << "[Router] Stopped" << std::endl;
+    LOG_INFO_MOD("Router", "Stopped");
 }
 
 std::string RouterCore::get_module_name(uint64_t module_id) const {
@@ -79,17 +80,17 @@ size_t RouterCore::get_queue_size() const {
 void RouterCore::connect_external_sender(std::function<void(const Message&)> sender) {
     std::lock_guard<std::mutex> lock(external_mtx);
     external_senders.push_back(sender);
-    std::cout << "[Router] External sender connected" << std::endl;
+    LOG_INFO_MOD("Router", "External sender connected");
 }
 
 void RouterCore::connect_external_receiver(std::function<void(const Message&)> receiver) {
     std::lock_guard<std::mutex> lock(external_mtx);
     external_receivers.push_back(receiver);
-    std::cout << "[Router] External receiver connected" << std::endl;
+    LOG_INFO_MOD("Router", "External receiver connected");
 }
 
 void RouterCore::polling_loop() {
-    std::cout << "[Router] Polling loop started" << std::endl;
+    LOG_INFO_MOD("Router", "Polling loop started");
     
     while (running.load(std::memory_order_relaxed)) {
         // 轮询获取消息
@@ -104,14 +105,15 @@ void RouterCore::polling_loop() {
         }
     }
     
-    std::cout << "[Router] Polling loop exited" << std::endl;
+    LOG_INFO_MOD("Router", "Polling loop exited");
 }
 
 void RouterCore::process_and_dispatch(const Message& msg) {
     // 单线程处理，不需要锁
     
-    std::cout << "[Router] Processing message: type=" << static_cast<int>(msg.type)
-              << ", sender=" << msg.sender_id << ", receiver=" << msg.receiver_id << std::endl;
+    LOG_INFO_MOD("Router", (std::string("Processing message: type=") + std::to_string(static_cast<int>(msg.type)) + 
+                           ", sender=" + std::to_string(msg.sender_id) + 
+                           ", receiver=" + std::to_string(msg.receiver_id)).c_str());
     
     // 1. 按消息类型分发
     {

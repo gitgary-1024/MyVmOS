@@ -1,5 +1,6 @@
 #include "vm/VmManager.h"
 #include "vm/baseVM.h"
+#include "vm/SchedulerManager.h"
 #include "router/RouterCore.h"
 #include <iostream>
 #include <chrono>
@@ -21,6 +22,9 @@ void VmManager::register_vm(std::shared_ptr<baseVM> vm) {
     std::lock_guard<std::mutex> lock(vm_mtx_);
     vms_[vm->get_vm_id()] = vm;  // 不 move，保持引用计数
     std::cout << "[VmManager] Registered VM " << vm->get_vm_id() << std::endl;
+    
+    // 注册到调度器
+    SchedulerManager::instance().register_vm(vm->get_vm_id(), std::weak_ptr<baseVM>(vm));
 }
 
 void VmManager::unregister_vm(uint64_t vm_id) {
@@ -30,6 +34,9 @@ void VmManager::unregister_vm(uint64_t vm_id) {
         vms_.erase(it);
         std::cout << "[VmManager] Unregistered VM " << vm_id << std::endl;
     }
+    
+    // 从调度器注销
+    SchedulerManager::instance().unregister_vm(vm_id);
     
     // 清理相关的待处理中断
     std::lock_guard<std::mutex> int_lock(interrupt_mtx_);
@@ -73,16 +80,20 @@ void VmManager::start() {
     running_.store(true, std::memory_order_relaxed);
     worker_thread_ = std::thread(&VmManager::worker_loop, this);
     
-    // 连接到 RouterCore - 作为外部接收器
-    auto& router = RouterCore::instance();
-    router.connect_external_receiver([this](const Message& msg) {
-        // 处理来自 Router 的消息（主要是中断结果）
-        if (msg.type == MessageType::INTERRUPT_RESULT_READY) {
-            handle_interrupt_result(msg);
-        }
+    // 启动调度器
+    SchedulerManager::instance().start();
+    
+    // 订阅 VM 的中断请求
+    route_subscribe(MessageType::INTERRUPT_REQUEST, [this](const Message& msg) {
+        this->handle_vm_interrupt_request(msg);
     });
     
-    std::cout << "[VmManager] Started" << std::endl;
+    // 订阅外设的中断结果
+    route_subscribe(MessageType::INTERRUPT_RESULT_READY, [this](const Message& msg) {
+        this->handle_interrupt_result(msg);
+    });
+    
+    std::cout << "[VmManager] Started (with scheduler)" << std::endl;
 }
 
 void VmManager::stop() {
@@ -92,6 +103,9 @@ void VmManager::stop() {
     if (worker_thread_.joinable()) {
         worker_thread_.join();
     }
+    
+    // 停止调度器
+    SchedulerManager::instance().stop();
     
     std::cout << "[VmManager] Stopped" << std::endl;
 }
@@ -153,31 +167,51 @@ void VmManager::worker_loop() {
 }
 
 void VmManager::forward_interrupt_to_router(const Message& msg) {
-    // 将中断请求转发到主路由树
+    // 将中断请求转发到主路由树 - 修改 receiver 为外设管理器
     std::cout << "[VmManager] Forwarding interrupt request to router" << std::endl;
-    route_send(msg);
+    
+    // 创建新消息，修改 sender 和 receiver
+    Message forwarded_msg = msg;
+    forwarded_msg.sender_id = MODULE_VM_MANAGER;  // 标记为 VM Manager 转发的
+    forwarded_msg.receiver_id = MODULE_PERIPH_MANAGER;  // 发送到外设管理器
+    
+    route_send(forwarded_msg);
 }
 
 void VmManager::process_interrupt_timeout(const PendingInterrupt& pending) {
     std::cout << "[VmManager] Interrupt timeout for VM " << pending.vm_id 
               << ", periph " << pending.periph_id << std::endl;
               
-    // 发送超时结果给VM
+    // 发送超时结果给 VM
     InterruptResult result{pending.vm_id, -1, true}; // timeout = true
-    Message timeout_msg(MODULE_INTERRUPT_SCHEDULER, pending.vm_id, MessageType::INTERRUPT_RESULT_READY);
+    Message timeout_msg(MODULE_VM_MANAGER, pending.vm_id, MessageType::INTERRUPT_RESULT_READY);
     timeout_msg.set_payload(result);
     
-    route_send(timeout_msg);
+    // ✅ 唤醒 VM（即使是超时也要唤醒，让 VM 处理错误）- 委托给 SchedulerManager
+    SchedulerManager::instance().wake_vm(pending.vm_id);
+    
+    // 调用 VM 的中断处理
+    auto vm = get_vm(pending.vm_id);
+    if (vm) {
+        vm->handle_interrupt(result);
+    } else {
+        std::cerr << "[VmManager] VM " << pending.vm_id << " not found for timeout" << std::endl;
+    }
 }
 
 void VmManager::on_interrupt_request(const Message& msg) {
+    // 忽略自己转发的消息（避免死循环）
+    if (msg.sender_id == MODULE_VM_MANAGER) {
+        return;  // 这是 VM Manager 转发的消息，不是 VM 直接发送的
+    }
+    
     auto* req = msg.get_payload<InterruptRequest>();
     if (!req) return;
     
     std::cout << "[VmManager] Processing interrupt request from VM " << req->vm_id 
               << " to periph " << req->periph_id << std::endl;
     
-    // 验证VM是否存在
+    // 验证 VM 是否存在
     {
         std::lock_guard<std::mutex> lock(vm_mtx_);
         if (vms_.find(req->vm_id) == vms_.end()) {
@@ -185,6 +219,9 @@ void VmManager::on_interrupt_request(const Message& msg) {
             return;
         }
     }
+    
+    // ✅ 阻塞 VM（让出调度名额）- 委托给 SchedulerManager
+    SchedulerManager::instance().block_vm(req->vm_id, 1); // 1=等待外设
     
     // 记录待处理的中断
     PendingInterrupt pending{
@@ -217,7 +254,10 @@ void VmManager::on_interrupt_result(const Message& msg) {
         pending_interrupts_.erase(result->vm_id);
     }
     
-    // 将结果转发给对应的VM
+    // ✅ 唤醒 VM（重新分配名额）- 委托给 SchedulerManager
+    SchedulerManager::instance().wake_vm(result->vm_id);
+    
+    // 将结果转发给对应的 VM
     auto vm = get_vm(result->vm_id);
     if (vm) {
         vm->handle_interrupt(*result);

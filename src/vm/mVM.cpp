@@ -7,15 +7,7 @@
 #include <memory>
 
 mVM::mVM(uint64_t vm_id) : baseVM(vm_id), running_(false), pending_input_reg_(-1) {
-    // 订阅 VM 唤醒通知
-    route_subscribe(MessageType::VM_WAKEUP_NOTIFY, [this](const Message& msg) {
-        if (msg.is_payload<VMWakeUpNotify>()) {
-            auto* wake = msg.get_payload<VMWakeUpNotify>();
-            if (wake->vm_id == this->vm_id_) {
-                this->on_wakeup();
-            }
-        }
-    });
+    // VM 的中断处理由 VmManager 统一调度，不需要订阅唤醒通知
     
     std::cout << "[VM " << vm_id << "] Created" << std::endl;
     LOG_INFO_MOD("VM", (std::string("Created VM ") + std::to_string(vm_id)).c_str());
@@ -24,11 +16,11 @@ mVM::mVM(uint64_t vm_id) : baseVM(vm_id), running_(false), pending_input_reg_(-1
 void mVM::start() {
     if (running_.load(std::memory_order_relaxed)) return;
     
-    // 注册到VM管理器
-    // 注意：暂时不注册，避免智能指针问题
-    // vm_manager_register_vm(std::shared_ptr<mVM>(this, [](mVM*){}));
+    // 注册到 VM管理器
+    // 使用 shared_from_this 需要基类支持，这里使用原始指针的 weak_ptr
+    vm_manager_register_vm(std::shared_ptr<mVM>(this, [](mVM*){}));
     
-    // 设置初始状态为RUNNING
+    // 设置初始状态为 RUNNING
     {
         std::lock_guard<std::mutex> lock(exec_mtx);
         state_ = VMState::RUNNING;
@@ -56,6 +48,12 @@ void mVM::load_program(const std::vector<uint32_t>& code) {
 
 void mVM::run_loop() {
     while (running_.load(std::memory_order_relaxed)) {
+        // ✅ 新增：检查是否有运行名额（调度器控制）
+        if (!has_quota()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            continue;
+        }
+        
         // 检查是否处于挂起状态
         {
             std::lock_guard<std::mutex> lock(exec_mtx);
@@ -80,7 +78,7 @@ void mVM::run_loop() {
             std::lock_guard<std::mutex> lock(exec_mtx);
             if (state_ == VMState::SUSPENDED_WAITING_INTERRUPT) {
                 // 保持挂起状态，不设置为终止
-                pc_--; // 回退PC，等待唤醒后重新执行当前指令
+                pc_--; // 回退 PC，等待唤醒后重新执行当前指令
                 continue; // 继续循环，等待中断唤醒
             }
             break;
@@ -182,14 +180,8 @@ void mVM::handle_interrupt(const InterruptResult& result) {
     state_ = VMState::RUNNING; // 恢复运行状态
     std::cout << "[VM " << vm_id_ << "] State changed to RUNNING" << std::endl;
     LOG_INFO_MOD("VM", "State changed to RUNNING");
-
-    // 发送唤醒消息
-    Message notify_msg(vm_id_, MODULE_SCHEDULER, MessageType::VM_WAKEUP_NOTIFY);
-    VMWakeUpNotify wake{vm_id_};
-    notify_msg.set_payload(wake);
-    std::cout << "[VM " << vm_id_ << "] Sending VM_WAKEUP_NOTIFY" << std::endl;
-    LOG_INFO_MOD("VM", "Sending VM_WAKEUP_NOTIFY");
-    route_send(notify_msg);
+    
+    // 不需要发送唤醒通知，因为状态已经改为 RUNNING，run_loop 会自动继续执行
 }
 
 void mVM::on_wakeup() {

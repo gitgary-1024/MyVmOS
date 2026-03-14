@@ -65,7 +65,7 @@ void Terminal::handle_output(uint64_t vm_id, uint64_t sender_id) {
 
 void Terminal::send_result(uint64_t vm_id, int result, bool is_timeout) {
     InterruptResult res{vm_id, result, is_timeout};
-    Message result_msg(3, vm_id, MessageType::INTERRUPT_RESULT_READY);
+    Message result_msg(3, MODULE_VM_MANAGER, MessageType::INTERRUPT_RESULT_READY);
     result_msg.set_payload(res);
     
     // 在新线程中发送消息，避免死锁

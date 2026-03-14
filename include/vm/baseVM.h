@@ -6,6 +6,7 @@
 #include <memory>
 #include <string>
 #include <functional>
+#include <atomic>
 #include "../router/MessageProtocol.h"
 #include "../router/RouterCore.h"
 // VmManager在实现文件中包含
@@ -16,6 +17,15 @@ enum class VMState {
     RUNNING,
     SUSPENDED_WAITING_INTERRUPT,
     TERMINATED
+};
+
+// ===== 调度上下文（新增）=====
+struct VMScheduleCtx {
+    int priority = 0;                    // 优先级（0=普通，1=高优 - 同步中断，-1=低优）
+    bool has_quota = false;              // 是否有运行名额
+    uint64_t instructions_executed = 0;  // 统计信息
+    uint64_t vruntime = 0;               // 虚拟运行时间（用于公平调度）
+    int blocked_reason = 0;              // 阻塞原因（0=无，1=等待外设，2=等待中断）
 };
 
 // ===== 指令码（仅 4 条）=====
@@ -45,9 +55,17 @@ public:
 
     virtual void handle_interrupt(const InterruptResult& result) = 0;
 
-    // --- 通信：通过 Router 发送中断请求 ---
+    // --- 调度接口（新增）---
+    inline const VMScheduleCtx& get_sched_ctx() const { return sched_ctx_; }
+    inline VMScheduleCtx& mutable_sched_ctx() { return sched_ctx_; }
+    
+    void grant_quota() { sched_ctx_.has_quota = true; }
+    void revoke_quota() { sched_ctx_.has_quota = false; }
+    bool has_quota() const { return sched_ctx_.has_quota; }
+
+    // --- 通信：通过 Router 发送中断请求（经过 VM Manager）---
     void send_interrupt_request(int periph_id, int timeout_ms = 2000) {
-        Message msg(vm_id_, MODULE_INTERRUPT_SCHEDULER, MessageType::INTERRUPT_REQUEST);
+        Message msg(vm_id_, MODULE_VM_MANAGER, MessageType::INTERRUPT_REQUEST);
         InterruptRequest req{vm_id_, periph_id, MessageType::INTERRUPT_SYNC_BEGIN, timeout_ms};
         msg.set_payload(req);
         route_send(msg);
@@ -67,6 +85,7 @@ protected:
     Register registers_[NUM_REGISTERS] = {0}; // R0, R1
     std::vector<uint32_t> memory_;
     VMState state_;
+    VMScheduleCtx sched_ctx_;  // 调度上下文（新增）
 
     static Opcode decode_opcode(uint32_t inst) { return static_cast<Opcode>(inst & 0xFF); }
     static uint32_t decode_operand1(uint32_t inst) { return (inst >> 8) & 0xFF; }

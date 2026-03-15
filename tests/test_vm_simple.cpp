@@ -34,7 +34,7 @@ int main() {
     router.register_module(0x01, "VMManager");
     router.register_module(0x03, "InterruptScheduler");
     router.register_module(0x05, "Scheduler");
-    router.start();
+    // router.start();
 
     // 2. 订阅中断结果和唤醒消息
     route_subscribe(MessageType::INTERRUPT_RESULT_READY, mock_interrupt_handler);

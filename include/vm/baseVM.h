@@ -66,7 +66,11 @@ public:
     // --- 通信：通过 Router 发送中断请求（经过 VM Manager）---
     void send_interrupt_request(int periph_id, int timeout_ms = 2000) {
         Message msg(vm_id_, MODULE_VM_MANAGER, MessageType::INTERRUPT_REQUEST);
-        InterruptRequest req{vm_id_, periph_id, MessageType::INTERRUPT_SYNC_BEGIN, timeout_ms};
+        InterruptRequest req;
+        req.vm_id = vm_id_;
+        req.periph_id = periph_id;
+        req.set_interrupt_type(InterruptType::SYSTEM);  // 使用 SYSTEM 类型
+        req.timeout_ms = timeout_ms;
         msg.set_payload(req);
         route_send(msg);
     }

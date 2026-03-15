@@ -23,7 +23,7 @@ void VmManager::register_vm(std::shared_ptr<baseVM> vm) {
     vms_[vm->get_vm_id()] = vm;  // 不 move，保持引用计数
     std::cout << "[VmManager] Registered VM " << vm->get_vm_id() << std::endl;
     
-    // 注册到调度器
+    // 注册到调度器（直接访问，无需通过对象池）
     SchedulerManager::instance().register_vm(vm->get_vm_id(), std::weak_ptr<baseVM>(vm));
 }
 
@@ -44,6 +44,19 @@ void VmManager::unregister_vm(uint64_t vm_id) {
     if (pending_it != pending_interrupts_.end()) {
         pending_interrupts_.erase(pending_it);
     }
+}
+
+void VmManager::destroy_vm(uint64_t vm_id) {
+    // 异步销毁 VM，避免阻塞主线程
+    vm_lifecycle_pool_.submit([this, vm_id]() {
+        std::cout << "[VmManager] Destroying VM " << vm_id << " asynchronously" << std::endl;
+        
+        // 先从管理器注销
+        unregister_vm(vm_id);
+        
+        // shared_ptr 会自动释放内存
+        std::cout << "[VmManager] VM " << vm_id << " destroyed and memory released" << std::endl;
+    });
 }
 
 std::shared_ptr<baseVM> VmManager::get_vm(uint64_t vm_id) {
@@ -127,13 +140,46 @@ std::vector<uint64_t> VmManager::get_all_vm_ids() const {
     return ids;
 }
 
+VmManager::InterruptStats VmManager::get_interrupt_stats() const {
+    InterruptStats stats;
+    stats.total_requests = interrupt_stats_.total_requests.load();
+    stats.completed_requests = interrupt_stats_.completed_requests.load();
+    stats.timeout_requests = interrupt_stats_.timeout_requests.load();
+    
+    {
+        std::lock_guard<std::mutex> lock(interrupt_mtx_);
+        stats.pending_requests = pending_interrupts_.size();
+    }
+    
+    if (stats.completed_requests > 0) {
+        stats.avg_latency_ms = static_cast<double>(interrupt_stats_.total_latency_ms.load()) / 
+                               static_cast<double>(stats.completed_requests);
+    }
+    
+    return stats;
+}
+
 void VmManager::worker_loop() {
     std::cout << "[VmManager] Worker loop started" << std::endl;
     
     while (running_.load(std::memory_order_relaxed)) {
         std::unique_lock<std::mutex> lock(worker_mtx_);
         
-        // 检查是否有超时的中断请求
+        // 1. 处理异步中断结果（优先级最高）
+        {
+            std::lock_guard<std::mutex> async_lock(async_result_mtx_);
+            while (!async_result_queue_.empty()) {
+                AsyncInterruptResult async_result = async_result_queue_.front();
+                async_result_queue_.pop();
+                lock.unlock();
+                
+                process_async_result(async_result);
+                
+                lock.lock();
+            }
+        }
+        
+        // 2. 检查是否有超时的中断请求
         std::vector<PendingInterrupt> timed_out;
         {
             std::lock_guard<std::mutex> int_lock(interrupt_mtx_);
@@ -153,13 +199,13 @@ void VmManager::worker_loop() {
             }
         }
         
-        // 处理超时的中断
+        // 3. 处理超时的中断
         for (const auto& pending : timed_out) {
             process_interrupt_timeout(pending);
         }
         
-        // 等待一段时间或被唤醒
-        worker_cv_.wait_for(lock, std::chrono::milliseconds(100), 
+        // 4. 等待一段时间或被唤醒
+        worker_cv_.wait_for(lock, std::chrono::milliseconds(50), 
                            [this] { return !running_.load(std::memory_order_relaxed); });
     }
     
@@ -180,10 +226,12 @@ void VmManager::forward_interrupt_to_router(const Message& msg) {
 
 void VmManager::process_interrupt_timeout(const PendingInterrupt& pending) {
     std::cout << "[VmManager] Interrupt timeout for VM " << pending.vm_id 
-              << ", periph " << pending.periph_id << std::endl;
+              << ", periph " << pending.periph_id 
+              << ", priority=" << static_cast<int>(pending.priority) << std::endl;
               
     // 发送超时结果给 VM
-    InterruptResult result{pending.vm_id, -1, true}; // timeout = true
+    InterruptResult result{pending.vm_id, -1, true, pending.interrupt_type, pending.priority};
+    result.completion_time = std::chrono::steady_clock::now();
     Message timeout_msg(MODULE_VM_MANAGER, pending.vm_id, MessageType::INTERRUPT_RESULT_READY);
     timeout_msg.set_payload(result);
     
@@ -197,6 +245,43 @@ void VmManager::process_interrupt_timeout(const PendingInterrupt& pending) {
     } else {
         std::cerr << "[VmManager] VM " << pending.vm_id << " not found for timeout" << std::endl;
     }
+    
+    // 更新统计
+    interrupt_stats_.timeout_requests++;
+}
+
+void VmManager::process_async_result(AsyncInterruptResult& async_result) {
+    std::cout << "[VmManager] Processing async interrupt result for VM " << async_result.vm_id
+              << ": " << async_result.result.return_value << std::endl;
+    
+    // 清理待处理中断记录
+    {
+        std::lock_guard<std::mutex> lock(interrupt_mtx_);
+        pending_interrupts_.erase(async_result.vm_id);
+    }
+    
+    // ✅ 唤醒 VM（重新分配名额）- 委托给 SchedulerManager
+    SchedulerManager::instance().wake_vm(async_result.vm_id);
+    
+    // 将结果转发给对应的 VM
+    auto vm = get_vm(async_result.vm_id);
+    if (vm) {
+        vm->handle_interrupt(async_result.result);
+        
+        // 计算延迟并更新统计
+        if (!async_result.result.is_timeout && 
+            async_result.request_time != std::chrono::steady_clock::time_point{}) {
+            int64_t latency = async_result.result.get_total_latency_ms(async_result.request_time);
+            interrupt_stats_.total_latency_ms += latency;
+            interrupt_stats_.completed_requests++;
+            
+            std::cout << "[VmManager] Interrupt completed for VM " << async_result.vm_id
+                      << ", latency=" << latency << "ms" << std::endl;
+        }
+    } else {
+        std::cerr << "[VmManager] VM " << async_result.vm_id 
+                  << " not found for result delivery" << std::endl;
+    }
 }
 
 void VmManager::on_interrupt_request(const Message& msg) {
@@ -209,7 +294,9 @@ void VmManager::on_interrupt_request(const Message& msg) {
     if (!req) return;
     
     std::cout << "[VmManager] Processing interrupt request from VM " << req->vm_id 
-              << " to periph " << req->periph_id << std::endl;
+              << " to periph " << req->periph_id 
+              << ", type=" << static_cast<int>(req->interrupt_type)
+              << ", priority=" << static_cast<int>(req->priority) << std::endl;
     
     // 验证 VM 是否存在
     {
@@ -223,19 +310,25 @@ void VmManager::on_interrupt_request(const Message& msg) {
     // ✅ 阻塞 VM（让出调度名额）- 委托给 SchedulerManager
     SchedulerManager::instance().block_vm(req->vm_id, 1); // 1=等待外设
     
-    // 记录待处理的中断
+    // 记录待处理的中断（加入优先级队列）
     PendingInterrupt pending{
         req->vm_id,
         req->periph_id,
         req->interrupt_type,
+        req->priority,
         req->timeout_ms,
-        std::chrono::steady_clock::now()
+        std::chrono::steady_clock::now(),
+        std::chrono::steady_clock::now()  // enqueue_time
     };
     
     {
         std::lock_guard<std::mutex> lock(interrupt_mtx_);
         pending_interrupts_[req->vm_id] = pending;
+        interrupt_priority_queue_.push(pending);  // 加入优先级队列
     }
+    
+    // 更新统计
+    interrupt_stats_.total_requests++;
     
     // 转发到主路由树
     forward_interrupt_to_router(msg);
@@ -246,22 +339,33 @@ void VmManager::on_interrupt_result(const Message& msg) {
     if (!result) return;
     
     std::cout << "[VmManager] Processing interrupt result for VM " << result->vm_id 
-              << ": " << result->return_value << std::endl;
+              << ": " << result->return_value 
+              << ", priority=" << static_cast<int>(result->priority) << std::endl;
     
-    // 清理待处理中断记录
+    // 获取请求时间以计算延迟
+    std::chrono::steady_clock::time_point request_time;
     {
         std::lock_guard<std::mutex> lock(interrupt_mtx_);
-        pending_interrupts_.erase(result->vm_id);
+        auto it = pending_interrupts_.find(result->vm_id);
+        if (it != pending_interrupts_.end()) {
+            request_time = it->second.request_time;
+        }
     }
     
-    // ✅ 唤醒 VM（重新分配名额）- 委托给 SchedulerManager
-    SchedulerManager::instance().wake_vm(result->vm_id);
+    // 创建结果副本并设置完成时间戳
+    InterruptResult result_copy = *result;
+    result_copy.completion_time = std::chrono::steady_clock::now();
     
-    // 将结果转发给对应的 VM
-    auto vm = get_vm(result->vm_id);
-    if (vm) {
-        vm->handle_interrupt(*result);
-    } else {
-        std::cerr << "[VmManager] VM " << result->vm_id << " not found for result delivery" << std::endl;
+    // 将结果加入异步处理队列（稍后由工作线程处理）
+    {
+        std::lock_guard<std::mutex> lock(async_result_mtx_);
+        async_result_queue_.push({
+            result->vm_id,
+            result_copy,
+            request_time
+        });
     }
+    
+    // 唤醒工作线程立即处理
+    worker_cv_.notify_all();
 }

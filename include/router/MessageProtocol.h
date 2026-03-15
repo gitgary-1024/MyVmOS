@@ -82,17 +82,83 @@ struct VMCreateResponse {
     int error_code; // ErrorCode value
 };
 
+// ===== 中断优先级定义 =====
+enum class InterruptPriority {
+    LOW = 0,      // 低优先级：磁盘、网络等慢速设备
+    NORMAL = 1,   // 普通优先级：终端、定时器等
+    HIGH = 2,     // 高优先级：键盘、鼠标等交互设备
+    REALTIME = 3  // 实时优先级：关键系统事件
+};
+
+// 中断类型定义
+enum class InterruptType {
+    TERMINAL_INPUT = 0,    // 终端输入
+    TERMINAL_OUTPUT = 1,   // 终端输出
+    DISK_READ = 2,         // 磁盘读
+    DISK_WRITE = 3,        // 磁盘写
+    NETWORK_RECV = 4,      // 网络接收
+    NETWORK_SEND = 5,      // 网络发送
+    TIMER = 6,             // 定时器
+    KEYBOARD = 7,          // 键盘输入
+    MOUSE = 8,             // 鼠标输入
+    SYSTEM = 9             // 系统事件
+};
+
+// 获取中断类型的默认优先级
+inline InterruptPriority get_interrupt_priority(InterruptType type) {
+    switch (type) {
+        case InterruptType::KEYBOARD:
+        case InterruptType::MOUSE:
+            return InterruptPriority::HIGH;
+        case InterruptType::TERMINAL_INPUT:
+        case InterruptType::TERMINAL_OUTPUT:
+        case InterruptType::TIMER:
+            return InterruptPriority::NORMAL;
+        case InterruptType::DISK_READ:
+        case InterruptType::DISK_WRITE:
+        case InterruptType::NETWORK_RECV:
+        case InterruptType::NETWORK_SEND:
+            return InterruptPriority::LOW;
+        case InterruptType::SYSTEM:
+            return InterruptPriority::REALTIME;
+        default:
+            return InterruptPriority::NORMAL;
+    }
+}
+
 struct InterruptRequest {
     uint64_t vm_id;
     int periph_id;
-    MessageType interrupt_type; // 实际应为 InterruptType，但为兼容消息路由暂用MessageType
+    InterruptType interrupt_type;  // 使用专用的 InterruptType
+    InterruptPriority priority = InterruptPriority::NORMAL;  // 显式优先级
     int timeout_ms = 2000;
+    std::chrono::steady_clock::time_point enqueue_time;  // 入队时间戳
+    
+    InterruptRequest() : vm_id(0), periph_id(0), 
+                         interrupt_type(InterruptType::SYSTEM),
+                         priority(InterruptPriority::NORMAL) {}
+    
+    // 自动根据中断类型设置优先级
+    void set_interrupt_type(InterruptType type) {
+        interrupt_type = type;
+        priority = get_interrupt_priority(type);
+    }
 };
 
 struct InterruptResult {
     uint64_t vm_id;
     int return_value;
     bool is_timeout = false;
+    InterruptType interrupt_type = InterruptType::SYSTEM;
+    InterruptPriority priority = InterruptPriority::NORMAL;
+    std::chrono::steady_clock::time_point completion_time;  // 完成时间戳
+    
+    // 计算总延迟（从请求到完成的毫秒数）
+    int64_t get_total_latency_ms(const std::chrono::steady_clock::time_point& request_time) const {
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+            completion_time - request_time);
+        return duration.count();
+    }
 };
 
 struct PeriphLockRequest {
@@ -160,6 +226,15 @@ struct Message {
     const T* get_payload() const {
         auto* p = std::get_if<T>(&payload);
         return p;
+    }
+    
+    // 重置消息状态（用于对象池复用）
+    void reset() {
+        sender_id = 0;
+        receiver_id = 0;
+        type = MessageType::ROUTER_PING;
+        timestamp = std::chrono::steady_clock::now();
+        payload = std::monostate{};  // 清空负载
     }
 };
 

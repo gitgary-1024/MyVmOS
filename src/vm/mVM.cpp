@@ -36,8 +36,8 @@ void mVM::stop() {
     if (vm_thread.joinable()) {
         vm_thread.join();
     }
-    // 从VM管理器注销
-    vm_manager_unregister_vm(vm_id_);
+    // 使用新的异步销毁方法（回收到对象池）
+    VmManager::instance().destroy_vm(vm_id_);
 }
 
 void mVM::load_program(const std::vector<uint32_t>& code) {

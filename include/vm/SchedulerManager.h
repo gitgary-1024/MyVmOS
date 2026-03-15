@@ -45,6 +45,9 @@ public:
     // === 新增：动态切换调度算法 ===
     void set_scheduler(std::shared_ptr<vm::SchedulerBase> scheduler);
     std::string get_current_scheduler_name() const;
+    
+    // === 新增：停止指定调度器 ===
+    void stop_scheduler(uint64_t scheduler_id);
 
 private:
     SchedulerManager();
@@ -53,6 +56,9 @@ private:
     // 当前使用的调度器实例（策略模式）
     std::shared_ptr<vm::SchedulerBase> current_scheduler_;
     mutable std::mutex scheduler_switch_mtx_;  // 保护调度器切换
+    
+    // 调度器 ID 计数器
+    std::atomic<uint64_t> next_scheduler_id_{1};
 };
 
 // 全局快捷函数

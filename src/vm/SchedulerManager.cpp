@@ -106,11 +106,16 @@ void SchedulerManager::set_scheduler(std::shared_ptr<vm::SchedulerBase> schedule
         current_scheduler_->stop();
     }
     
-    // 切换新调度器
+    // 切换新调度器并分配唯一 ID
     current_scheduler_ = scheduler;
     
-    // 启动新调度器
     if (current_scheduler_) {
+        // 分配唯一的调度器 ID
+        current_scheduler_->scheduler_id_ = next_scheduler_id_.fetch_add(1);
+        std::cout << "[SchedulerManager] Assigned scheduler ID: " 
+                  << current_scheduler_->get_scheduler_id() << std::endl;
+        
+        // 启动新调度器
         current_scheduler_->start();
         std::cout << "[SchedulerManager] Switched to scheduler: " 
                   << get_current_scheduler_name() << std::endl;
@@ -123,4 +128,16 @@ std::string SchedulerManager::get_current_scheduler_name() const {
         return current_scheduler_->get_scheduler_name();
     }
     return "None";
+}
+
+void SchedulerManager::stop_scheduler(uint64_t scheduler_id) {
+    std::lock_guard<std::mutex> lock(scheduler_switch_mtx_);
+    
+    if (current_scheduler_ && current_scheduler_->get_scheduler_id() == scheduler_id) {
+        std::cout << "[SchedulerManager] Stopping scheduler ID: " << scheduler_id << std::endl;
+        // 直接调用 stop() 方法，使用 condition_variable 立即唤醒
+        current_scheduler_->stop();
+    } else {
+        std::cout << "[SchedulerManager] No matching scheduler found for ID: " << scheduler_id << std::endl;
+    }
 }

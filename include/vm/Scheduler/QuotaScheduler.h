@@ -8,6 +8,7 @@
 #include <mutex>
 #include <atomic>
 #include <thread>
+#include <condition_variable>
 #include <chrono>
 #include <iostream>
 
@@ -88,6 +89,7 @@ private:
     // 调度线程
     std::atomic<bool> scheduler_running_{false};
     std::thread scheduler_thread_;
+    std::condition_variable cv_;                        // 调度器条件变量
     
     // 调度参数
     const int time_slice_ms_ = 10;               // 时间片（毫秒）

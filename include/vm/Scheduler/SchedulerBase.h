@@ -5,6 +5,7 @@
 #include <memory>
 #include <vector>
 #include <string>
+#include <atomic>
 
 // 前置声明
 class baseVM;
@@ -17,14 +18,22 @@ namespace vm {
  */
 class SchedulerBase {
 public:
+    // 唯一调度器 ID（由 SchedulerManager 分配）
+    uint64_t scheduler_id_;
+
+
+    SchedulerBase();
     virtual ~SchedulerBase() = default;
+    
+    // 获取调度器唯一 ID
+    uint64_t get_scheduler_id() const { return scheduler_id_; }
     
     // 调度器生命周期
     virtual void start() = 0;      // 启动调度器
     virtual void stop() = 0;       // 停止调度器
     virtual bool is_running() const = 0;
     
-    // VM管理
+    // VM 管理
     virtual void register_vm(uint64_t vm_id, std::weak_ptr<baseVM> vm) = 0;
     virtual void unregister_vm(uint64_t vm_id) = 0;
     
@@ -43,6 +52,8 @@ public:
     
     // 获取调度器名称（用于日志和调试）
     virtual std::string get_scheduler_name() const = 0;
+    
+protected:
 };
 
 } // namespace vm

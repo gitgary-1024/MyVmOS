@@ -22,6 +22,9 @@ void QuotaScheduler::start() {
 void QuotaScheduler::stop() {
     scheduler_running_.store(false);
     
+    // 唤醒等待中的调度线程
+    cv_.notify_one();
+    
     if (scheduler_thread_.joinable()) {
         scheduler_thread_.join();
     }
@@ -160,18 +163,21 @@ void QuotaScheduler::scheduler_loop() {
         // 分配名额
         allocate_quotas();
         
-        // 等待时间片结束
+        // 等待时间片结束，使用 condition_variable 实现高效等待
         auto elapsed = std::chrono::steady_clock::now() - start_time;
-        int sleep_ms = time_slice_ms_ - static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count());
-        if (sleep_ms > 0) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(sleep_ms));
+        int remaining_ms = time_slice_ms_ - static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count());
+        
+        if (remaining_ms > 0) {
+            std::unique_lock<std::mutex> lock(sched_mtx_);
+            // 使用 condition_variable 等待，支持立即唤醒
+            cv_.wait_for(lock, std::chrono::milliseconds(remaining_ms));
         }
         
         // 更新虚拟运行时间
         update_vruntime();
     }
     
-    std::cout << "[QuotaScheduler] Scheduler loop ended" << std::endl;
+    std::cout << "[QuotaScheduler] Scheduler loop exited" << std::endl;
 }
 
 void QuotaScheduler::allocate_quotas() {

@@ -53,10 +53,10 @@ void NIC::handle_interrupt_request(const Message& msg) {
     if (req->periph_id != 2) return;
 
     // 真实网络操作
-    if (req->interrupt_type == MessageType::INTERRUPT_SYNC_BEGIN) {
+    if (req->interrupt_type == InterruptType::NETWORK_RECV) {
         // RECV 操作：从网络接收数据
         handle_recv(req->vm_id);
-    } else if (req->interrupt_type == MessageType::INTERRUPT_SYNC_COMPLETE) {
+    } else if (req->interrupt_type == InterruptType::NETWORK_SEND) {
         // SEND 操作：发送数据到网络
         handle_send(req->vm_id, msg.sender_id);
     }

@@ -12,6 +12,7 @@
 #include <chrono>
 #include "../router/MessageProtocol.h"
 #include "../utils/ThreadPool.h"
+#include "../utils/TimeoutManager.h"  // 新增：统一超时管理
 
 // 前置声明
 class baseVM;
@@ -102,6 +103,7 @@ private:
         int timeout_ms;
         std::chrono::steady_clock::time_point request_time;
         std::chrono::steady_clock::time_point enqueue_time;
+        TimeoutManager::TimeoutId timeout_id = 0;  // TimeoutManager 的超时 ID
         
         // 用于优先级队列比较（优先级高的在前）
         bool operator<(const PendingInterrupt& other) const {

@@ -25,10 +25,10 @@ void Terminal::handle_interrupt_request(const Message& msg) {
     }
 
     // 真实终端处理
-    if (req->interrupt_type == MessageType::INTERRUPT_SYNC_BEGIN) {
+    if (req->interrupt_type == InterruptType::TERMINAL_INPUT) {
         // INPUT 操作：从终端读取字符
         handle_input(req->vm_id);
-    } else if (req->interrupt_type == MessageType::INTERRUPT_SYNC_COMPLETE) {
+    } else if (req->interrupt_type == InterruptType::TERMINAL_OUTPUT) {
         // OUTPUT 操作：输出到终端
         handle_output(req->vm_id, msg.sender_id);
     }

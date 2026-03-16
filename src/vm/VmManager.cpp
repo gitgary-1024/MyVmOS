@@ -42,6 +42,10 @@ void VmManager::unregister_vm(uint64_t vm_id) {
     std::lock_guard<std::mutex> int_lock(interrupt_mtx_);
     auto pending_it = pending_interrupts_.find(vm_id);
     if (pending_it != pending_interrupts_.end()) {
+        // 取消 TimeoutManager 的超时定时器
+        if (pending_it->second.timeout_id != 0) {
+            TimeoutManager::instance().cancel_timeout(pending_it->second.timeout_id);
+        }
         pending_interrupts_.erase(pending_it);
     }
 }
@@ -179,7 +183,10 @@ void VmManager::worker_loop() {
             }
         }
         
-        // 2. 检查是否有超时的中断请求
+        // 2. 处理 TimeoutManager 的超时回调
+        TimeoutManager::instance().process_timeouts();
+        
+        // 3. 检查是否有超时的中断请求（备用机制，以防 TimeoutManager 失效）
         std::vector<PendingInterrupt> timed_out;
         {
             std::lock_guard<std::mutex> int_lock(interrupt_mtx_);
@@ -199,13 +206,30 @@ void VmManager::worker_loop() {
             }
         }
         
-        // 3. 处理超时的中断
+        // 4. 处理超时的中断
         for (const auto& pending : timed_out) {
             process_interrupt_timeout(pending);
         }
         
-        // 4. 等待一段时间或被唤醒
-        worker_cv_.wait_for(lock, std::chrono::milliseconds(50), 
+        // 5. 动态计算等待时间（使用 TimeoutManager）
+        int64_t next_timeout = TimeoutManager::instance().get_next_timeout_ms();
+        auto wait_duration = std::chrono::milliseconds(50);  // 默认 50ms
+        
+        if (next_timeout == -1) {
+            // 没有超时，使用默认等待时间
+            wait_duration = std::chrono::milliseconds(50);
+        } else if (next_timeout == 0) {
+            // 已经超时，立即继续
+            continue;
+        } else {
+            // 有超时，取最小值
+            wait_duration = std::chrono::milliseconds(
+                std::min(static_cast<int64_t>(50), next_timeout)
+            );
+        }
+        
+        // 6. 等待一段时间或被唤醒
+        worker_cv_.wait_for(lock, wait_duration, 
                            [this] { return !running_.load(std::memory_order_relaxed); });
     }
     
@@ -321,6 +345,25 @@ void VmManager::on_interrupt_request(const Message& msg) {
         std::chrono::steady_clock::now()  // enqueue_time
     };
     
+    // 使用 TimeoutManager 注册超时回调
+    pending.timeout_id = TimeoutManager::instance().register_timeout(
+        req->timeout_ms,
+        [this, vm_id = req->vm_id]() {
+            // 超时回调：发送超时错误给 VM
+            std::cout << "[VmManager] Timeout callback triggered for VM " << vm_id << std::endl;
+            
+            InterruptResult result{vm_id, -1, true, InterruptType::SYSTEM, InterruptPriority::NORMAL};
+            result.completion_time = std::chrono::steady_clock::now();
+            
+            Message timeout_msg(MODULE_VM_MANAGER, vm_id, MessageType::INTERRUPT_RESULT_READY);
+            timeout_msg.set_payload(result);
+            
+            // 转发结果给 VM
+            handle_interrupt_result(timeout_msg);
+        },
+        "Interrupt_VM" + std::to_string(req->vm_id)
+    );
+    
     {
         std::lock_guard<std::mutex> lock(interrupt_mtx_);
         pending_interrupts_[req->vm_id] = pending;
@@ -344,12 +387,19 @@ void VmManager::on_interrupt_result(const Message& msg) {
     
     // 获取请求时间以计算延迟
     std::chrono::steady_clock::time_point request_time;
+    TimeoutManager::TimeoutId timeout_id = 0;
     {
         std::lock_guard<std::mutex> lock(interrupt_mtx_);
         auto it = pending_interrupts_.find(result->vm_id);
         if (it != pending_interrupts_.end()) {
             request_time = it->second.request_time;
+            timeout_id = it->second.timeout_id;  // 获取超时 ID
         }
+    }
+    
+    // 取消超时定时器（因为已经收到结果）
+    if (timeout_id != 0) {
+        TimeoutManager::instance().cancel_timeout(timeout_id);
     }
     
     // 创建结果副本并设置完成时间戳

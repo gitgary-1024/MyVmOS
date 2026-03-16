@@ -27,10 +27,10 @@ void Disk::handle_interrupt_request(const Message& msg) {
     if (req->periph_id != 1) return;
 
     // 真实磁盘操作
-    if (req->interrupt_type == MessageType::INTERRUPT_SYNC_BEGIN) {
+    if (req->interrupt_type == InterruptType::DISK_READ) {
         // READ 操作：从磁盘读取数据
         handle_read(req->vm_id);
-    } else if (req->interrupt_type == MessageType::INTERRUPT_SYNC_COMPLETE) {
+    } else if (req->interrupt_type == InterruptType::DISK_WRITE) {
         // WRITE 操作：写入数据到磁盘
         handle_write(req->vm_id, msg.sender_id);
     }

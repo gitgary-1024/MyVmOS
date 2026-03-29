@@ -40,6 +40,10 @@ set(SOURCES
     src/vm/Scheduler/QuotaScheduler.cpp
     src/utils/TimeoutManager.cpp
     src/utils/ThreadPool.cpp
+    src/vm/X86CPU.cpp
+    src/vm/X86_decode.cpp
+    src/vm/X86_instructions.cpp
+    src/vm/X86_other_instructions.cpp
 )
 
 # 创建静态库
@@ -54,11 +58,27 @@ if(WIN32)
     target_link_libraries(myos_lib ws2_32)
 endif()
 
+# ==================== Compiler 子模块 ====================
+# 添加自定义编译器作为子项目
+option(BUILD_COMPILER "Build the custom compiler" ON)
+
+if(BUILD_COMPILER)
+    add_subdirectory(Compiler)
+endif()
+
 # ==================== 测试程序 ====================
 
 # TimeoutManager 测试
 add_executable(test_timeout tests/test_timeout_manager.cpp)
 target_link_libraries(test_timeout myos_lib Threads::Threads)
+
+# x86 CPU VM 测试
+add_executable(test_x86_cpu tests/test_x86_cpu.cpp)
+target_link_libraries(test_x86_cpu myos_lib)
+
+# x86 简单测试
+add_executable(test_x86_simple tests/test_x86_simple.cpp)
+target_link_libraries(test_x86_simple myos_lib)
 
 # VmManager 架构测试
 add_executable(test_vm_manager_arch tests/test_vm_manager_arch.cpp)
@@ -83,6 +103,12 @@ target_link_libraries(test_router myos_lib Threads::Threads)
 # 日志测试
 add_executable(test_logging tests/test_logging.cpp)
 target_link_libraries(test_logging myos_lib)
+
+# Compiler 集成测试
+if(BUILD_COMPILER)
+    add_executable(test_compiler_integration tests/test_compiler_integration.cpp)
+    target_link_libraries(test_compiler_integration compiler_lib)
+endif()
 
 # ==================== 主程序 ====================
 

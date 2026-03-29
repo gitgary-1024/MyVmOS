@@ -45,6 +45,13 @@ set_target_properties(test_ir_to_assembly PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin
 )
 
+# 创建 File 类集成测试
+add_executable(test_file_integration tests/test_file_integration.cpp)
+target_link_libraries(test_file_integration compiler_lib)
+set_target_properties(test_file_integration PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin
+)
+
 # 创建可执行文件（仅当独立编译时）
 if(NOT TARGET myos_lib)
     add_executable(${PROJECT_NAME} main.cpp)

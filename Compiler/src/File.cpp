@@ -1,6 +1,7 @@
 // File.cpp - 文件处理类实现
 #include "File.h"
 #include <iostream>
+#include <sstream>
 
 const std::string symbolList = "+-*/=(){}[];,&|!><";
 
@@ -145,4 +146,75 @@ std::vector<Token> File::returnAllToken() {
 
 std::vector<IRNode>& File::ir() {
     return IRnodes;
+}
+
+std::string File::compileToAssembly(bool useIntelSyntax, bool withComments) {
+    // 创建寄存器映射（32 位 -> 64 位）
+    std::unordered_map<std::string, std::string> regMap;
+    regMap["eax"] = "rax";
+    regMap["ebx"] = "rbx";
+    regMap["ecx"] = "rcx";
+    regMap["edx"] = "rdx";
+    regMap["esi"] = "rsi";
+    regMap["edi"] = "rdi";
+    regMap["ebp"] = "rbp";
+    regMap["esp"] = "rsp";
+    
+    // 使用 IRToAssembly 生成汇编代码
+    IRToAssembly assembler(IRnodes, regMap, useIntelSyntax, withComments);
+    return assembler.compile();
+}
+
+bool File::compileToBinary(const std::string& outputFile, bool useIntelSyntax) {
+    // 1. 生成汇编代码
+    std::string assembly = compileToAssembly(useIntelSyntax, false);
+    
+    // 2. 添加段声明和数据定义
+    std::stringstream fullAsm;
+    if (useIntelSyntax) {
+        fullAsm << "section .data\n";
+        fullAsm << "    x: dq 0\n";
+        fullAsm << "    y: dq 0\n";
+        fullAsm << "    result: dq 0\n";
+        fullAsm << "\n";
+    }
+    fullAsm << assembly;
+    
+    // 3. 写入临时汇编文件
+    std::string tempAsmFile = "temp_output.asm";
+    std::ofstream asmOut(tempAsmFile);
+    if (!asmOut.is_open()) {
+        std::cerr << "Error: Cannot create temporary assembly file" << std::endl;
+        return false;
+    }
+    asmOut << fullAsm.str();
+    asmOut.close();
+    
+    // 4. 调用汇编器（NASM）生成目标文件
+    std::string tempObjFile = "temp_output.o";
+    std::stringstream nasmCmd;
+    nasmCmd << "nasm -f win64 " << tempAsmFile << " -o " << tempObjFile;
+    int nasmResult = system(nasmCmd.str().c_str());
+    
+    if (nasmResult != 0) {
+        std::cerr << "Error: NASM assembly failed" << std::endl;
+        return false;
+    }
+    
+    // 5. 调用链接器生成可执行文件
+    std::stringstream ldCmd;
+    // 链接 64 位可执行文件
+    ldCmd << "g++ -o " << outputFile << " " << tempObjFile;
+    int ldResult = system(ldCmd.str().c_str());
+    
+    if (ldResult != 0) {
+        std::cerr << "Error: Linking failed" << std::endl;
+        return false;
+    }
+    
+    // 6. 清理临时文件
+    std::remove(tempAsmFile.c_str());
+    std::remove(tempObjFile.c_str());
+    
+    return true;
 }

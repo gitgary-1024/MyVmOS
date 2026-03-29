@@ -68,12 +68,7 @@ bool IRToAssembly::isMemoryOperand(const std::string& str) {
 }
 
 std::string IRToAssembly::getPhysicalReg(const std::string& vreg) {
-    // 如果已经是物理寄存器，直接返回
-    if (isRegister(vreg)) {
-        return vreg;
-    }
-    
-    // 查找映射
+    // 如果寄存器映射中存在，使用映射的寄存器
     auto it = regMap.find(vreg);
     if (it != regMap.end()) {
         return it->second;
@@ -100,11 +95,14 @@ std::string IRToAssembly::convertOperand(const std::string& operand) {
     
     // 如果是寄存器
     if (isRegister(op)) {
+        // 应用寄存器映射
+        std::string mappedReg = getPhysicalReg(op);
+        
         if (useIntelSyntax) {
-            return op;
+            return mappedReg;
         } else {
             // AT&T 语法需要 % 前缀
-            return "%" + op;
+            return "%" + mappedReg;
         }
     }
     
@@ -141,25 +139,41 @@ void IRToAssembly::emitInstruction(const std::string& mnemonic,
     if (useIntelSyntax) {
         // Intel 语法：INSTRUCTION DEST, SRC
         ss << "    " << mnemonic;
-        if (!dest.empty()) {
+        
+        // 如果两个操作数都为空，只输出助记符
+        if (dest.empty() && src.empty()) {
+            // 无操作数指令（如 ret, nop）
+        }
+        else if (!dest.empty() && src.empty()) {
+            // 单操作数指令（如 push eax, neg eax）
             ss << " " << dest;
-            if (!src.empty()) {
-                ss << ", " << src;
-            }
+        }
+        else if (!dest.empty() && !src.empty()) {
+            // 双操作数指令
+            ss << " " << dest << ", " << src;
+        }
+        else {
+            // dest 为空但 src 不为空的情况（不应该出现）
+            ss << " " << src;
         }
     } else {
         // AT&T 语法：INSTRUCTION SRC, DEST
         ss << "    " << mnemonic;
-        if (!src.empty() || !dest.empty()) {
-            ss << " ";
-            std::vector<std::string> ops;
-            if (!src.empty()) ops.push_back(src);
-            if (!dest.empty()) ops.push_back(dest);
-            
-            for (size_t i = 0; i < ops.size(); i++) {
-                if (i > 0) ss << ", ";
-                ss << ops[i];
-            }
+        
+        if (dest.empty() && src.empty()) {
+            // 无操作数指令
+        }
+        else if (!dest.empty() && src.empty()) {
+            // 单操作数指令
+            ss << " " << dest;
+        }
+        else if (!dest.empty() && !src.empty()) {
+            // 双操作数指令
+            ss << " " << src << ", " << dest;
+        }
+        else {
+            // dest 为空但 src 不为空的情况
+            ss << " " << src;
         }
     }
     
@@ -202,8 +216,8 @@ void IRToAssembly::translatePUSH(const IRNode& node) {
         return;
     }
     
-    std::string src = convertOperand(node.operands[0]);
-    emitInstruction("push", "", src);
+    std::string operand = convertOperand(node.operands[0]);
+    assemblyCode.push_back("    push " + operand);
 }
 
 void IRToAssembly::translatePOP(const IRNode& node) {
@@ -212,8 +226,8 @@ void IRToAssembly::translatePOP(const IRNode& node) {
         return;
     }
     
-    std::string dest = convertOperand(node.operands[0]);
-    emitInstruction("pop", dest, "");
+    std::string operand = convertOperand(node.operands[0]);
+    assemblyCode.push_back("    pop " + operand);
 }
 
 void IRToAssembly::translateADD(const IRNode& node) {

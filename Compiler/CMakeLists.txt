@@ -21,6 +21,7 @@ set(COMPILER_SOURCES
     src/IR/IRbase.cpp
     src/IR/IR.cpp
     src/IR/IRprinter.cpp
+    src/IR/IRToAssembly.cpp
     src/File.cpp
 )
 
@@ -36,6 +37,13 @@ target_include_directories(compiler_lib PUBLIC
 
 # 定义调试宏（可选）
 target_compile_definitions(compiler_lib PRIVATE _DEBUG)
+
+# 创建测试可执行文件
+add_executable(test_ir_to_assembly tests/test_ir_to_assembly.cpp)
+target_link_libraries(test_ir_to_assembly compiler_lib)
+set_target_properties(test_ir_to_assembly PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin
+)
 
 # 创建可执行文件（仅当独立编译时）
 if(NOT TARGET myos_lib)

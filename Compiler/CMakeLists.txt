@@ -22,6 +22,7 @@ set(COMPILER_SOURCES
     src/IR/IR.cpp
     src/IR/IRprinter.cpp
     src/IR/IRToAssembly.cpp
+    src/IR/Assembler.cpp
     src/File.cpp
 )
 
@@ -49,6 +50,13 @@ set_target_properties(test_ir_to_assembly PROPERTIES
 add_executable(test_file_integration tests/test_file_integration.cpp)
 target_link_libraries(test_file_integration compiler_lib)
 set_target_properties(test_file_integration PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin
+)
+
+# 创建汇编器测试
+add_executable(test_assembler tests/test_assembler.cpp)
+target_link_libraries(test_assembler compiler_lib)
+set_target_properties(test_assembler PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin
 )
 

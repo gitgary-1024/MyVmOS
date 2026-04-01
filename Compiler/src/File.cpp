@@ -2,6 +2,7 @@
 #include "File.h"
 #include <iostream>
 #include <sstream>
+#include <fstream>
 
 const std::string symbolList = "+-*/=(){}[];,&|!><";
 
@@ -190,7 +191,7 @@ bool File::compileToBinary(const std::string& outputFile, bool useIntelSyntax) {
     asmOut << fullAsm.str();
     asmOut.close();
     
-    // 4. 调用汇编器（NASM）生成目标文件
+    // 4. 调用 NASM 汇编器生成目标文件
     std::string tempObjFile = "temp_output.o";
     std::stringstream nasmCmd;
     nasmCmd << "nasm -f win64 " << tempAsmFile << " -o " << tempObjFile;
@@ -203,7 +204,6 @@ bool File::compileToBinary(const std::string& outputFile, bool useIntelSyntax) {
     
     // 5. 调用链接器生成可执行文件
     std::stringstream ldCmd;
-    // 链接 64 位可执行文件
     ldCmd << "g++ -o " << outputFile << " " << tempObjFile;
     int ldResult = system(ldCmd.str().c_str());
     
@@ -217,4 +217,25 @@ bool File::compileToBinary(const std::string& outputFile, bool useIntelSyntax) {
     std::remove(tempObjFile.c_str());
     
     return true;
+}
+
+bool File::compileToObjectFile(const std::string& outputFile) {
+    // 使用 Assembler 直接生成机器码
+    Assembler assembler(IRnodes);
+    std::vector<uint8_t> machineCode = assembler.compile();
+    
+    // 打印机器码（调试用）
+    std::cout << "\n=== 生成的机器码 ===" << std::endl;
+    assembler.printMachineCode();
+    std::cout << std::endl;
+    
+    // 保存为二进制文件
+    if (assembler.saveToFile(outputFile)) {
+        std::cout << "✓ 对象文件已生成：" << outputFile << std::endl;
+        std::cout << "  大小：" << machineCode.size() << " 字节" << std::endl;
+        return true;
+    } else {
+        std::cerr << "✗ 无法保存对象文件" << std::endl;
+        return false;
+    }
 }

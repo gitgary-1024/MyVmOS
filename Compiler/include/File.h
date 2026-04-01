@@ -12,6 +12,7 @@
 #include "./IR/IR.h"
 #include "./IR/IRprinter.h"
 #include "./IR/IRToAssembly.h"
+#include "./IR/Assembler.h"
 
 class File {
     std::fstream codeFile;
@@ -35,6 +36,7 @@ public:
     void compile();
     std::string compileToAssembly(bool useIntelSyntax = true, bool withComments = true);
     bool compileToBinary(const std::string& outputFile, bool useIntelSyntax = true);
+    bool compileToObjectFile(const std::string& outputFile);
     
 #ifdef _DEBUG
     void printAST();

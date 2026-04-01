@@ -14,8 +14,9 @@ private:
     std::vector<IRNode> irNodes;
     std::vector<uint8_t> machineCode;  // 生成的机器码
     std::unordered_map<std::string, uint64_t> labelToAddress;  // 标签地址映射
-    std::unordered_map<std::string, uint64_t> variableOffsets; // 变量偏移量
-    uint64_t currentAddress;  // 当前地址
+    std::unordered_map<std::string, uint64_t> variableOffsets; // 变量偏移量（相对于数据段起点）
+    uint64_t currentAddress;  // 当前代码地址
+    uint64_t dataSegmentBase;  // 数据段在代码中的起始地址
     
     // 寄存器编码
     enum Reg64 {

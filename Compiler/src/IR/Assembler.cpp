@@ -8,7 +8,9 @@
 #include <iomanip>
 
 // ===== 构造函数 =====
-Assembler::Assembler(const std::vector<IRNode>& ir) : irNodes(ir), currentAddress(0) {
+Assembler::Assembler(const std::vector<IRNode>& ir) : irNodes(ir), 
+                                                       currentAddress(0), 
+                                                       dataSegmentBase(0) {
 }
 
 // ===== 工具函数 =====
@@ -96,26 +98,45 @@ std::vector<uint8_t> Assembler::compile() {
     variableOffsets.clear();
     currentAddress = 0;
     
-    // 第一遍：收集标签地址和变量偏移
+    // ========== 第一遍：收集标签和变量信息 ==========
     uint64_t varOffset = 0;
     for (const auto& node : irNodes) {
         if (node.op == IROp::LABEL) {
             labelToAddress[node.operands[0]] = currentAddress;
-        } else if (node.operands.size() > 0 && 
-                   node.operands[0].find('[') != std::string::npos &&
-                   variableOffsets.find(node.operands[0]) == variableOffsets.end()) {
-            // 新的变量
-            variableOffsets[node.operands[0]] = varOffset;
-            varOffset += 8; // 每个变量 8 字节
+        } else if (node.operands.size() > 0) {
+            // 检查所有操作数，查找内存访问
+            for (const auto& op : node.operands) {
+                if (op.find('[') != std::string::npos && op.find(']') != std::string::npos) {
+                    // 提取变量名 [var] -> var
+                    std::string varName = op.substr(op.find('[') + 1, op.find(']') - op.find('[') - 1);
+                    
+                    // 如果是新变量，分配偏移
+                    if (variableOffsets.find(varName) == variableOffsets.end()) {
+                        variableOffsets[varName] = varOffset;
+                        varOffset += 8; // 每个变量 8 字节
+                    }
+                }
+            }
         }
         currentAddress += 15; // 估算每条指令的平均长度
     }
     
-    // 重置，开始第二遍真正编码
+    // ========== 第二遍：编码所有指令 ==========
     machineCode.clear();
     currentAddress = 0;
     
-    // 第二遍：编码所有指令
+    // 先估算代码段大小，确定数据段基址
+    uint64_t estimatedCodeSize = 0;
+    for (const auto& node : irNodes) {
+        if (node.op == IROp::LABEL) {
+            continue;  // LABEL 不生成代码
+        }
+        // 简单估算：每条指令平均 10 字节
+        estimatedCodeSize += 10;
+    }
+    dataSegmentBase = estimatedCodeSize;  // 数据段放在代码段后面
+    
+    // 开始编码
     for (const auto& node : irNodes) {
         switch (node.op) {
             case IROp::MOV:     encodeMOV(node); break;
@@ -143,15 +164,16 @@ std::vector<uint8_t> Assembler::compile() {
             case IROp::POP:     encodePOP(node); break;
             case IROp::LABEL:   encodeLABEL(node); break;
             case IROp::LEA:     encodeLEA(node); break;
-            // 暂时不支持的指令
-            // case IROp::SAL:   encodeSAL(node); break;
-            // case IROp::SAR:   encodeSAR(node); break;
-            // case IROp::SHL:   encodeSHL(node); break;
-            // case IROp::SHR:   encodeSHR(node); break;
             default:
                 std::cerr << "Warning: Unsupported IR operation: " 
                           << static_cast<int>(node.op) << std::endl;
         }
+    }
+    
+    // ========== 第三遍：添加数据段 ==========
+    // 在代码段末尾为每个变量预留空间
+    for (const auto& [varName, offset] : variableOffsets) {
+        emitQWord(0);  // 为每个变量预留 8 字节空间，初始化为 0
     }
     
     return machineCode;
@@ -231,20 +253,55 @@ void Assembler::encodeMOV(const IRNode& node) {
     else if (dest.find('[') != std::string::npos && isRegister(src)) {
         int srcReg = getRegCode(src);
         
-        // 简化处理：使用绝对地址
+        // 提取变量名 [var] -> var
+        std::string varName = dest.substr(dest.find('[') + 1, dest.find(']') - dest.find('[') - 1);
+        
+        // 查找变量偏移
+        auto it = variableOffsets.find(varName);
+        if (it == variableOffsets.end()) {
+            std::cerr << "Warning: Undefined variable '" << varName << "'" << std::endl;
+            return;  // 未定义的变量
+        }
+        
+        uint64_t varOffset = it->second;
+        
+        // 计算 RIP 相对偏移
+        // 当前指令地址 + 指令长度 (7 字节) = 下一条指令地址
+        // 数据段基址 + 变量偏移 = 变量地址
+        // offset = 变量地址 - 下一条指令地址
+        int64_t currentPos = currentAddress + 7;  // MOV [rip+disp32], reg 的长度
+        int64_t varAddr = dataSegmentBase + varOffset;
+        int32_t ripOffset = varAddr - currentPos;
+        
+        // REX.W + 89 /r  (ModR/M: [rip+disp32], r64)
         emitByte(0x48);  // REX.W
         emitByte(0x89);  // MOV r/m64, r64
-        emitByte(0x05);  // disp32
-        emitDWord(0);    // 占位符，实际使用时需要填充地址
+        emitByte(0x05);  // ModR/M: 00 000 101 (使用 RIP 相对寻址)
+        emitDWord(ripOffset);  // 32 位 RIP 相对偏移
     }
     // 情况 4: MOV reg, [mem] (寄存器 = 内存)
     else if (isRegister(dest) && src.find('[') != std::string::npos) {
         int destReg = getRegCode(dest);
         
+        // 提取变量名 [var] -> var
+        std::string varName = src.substr(src.find('[') + 1, src.find(']') - src.find('[') - 1);
+        
+        // 查找变量偏移
+        auto it = variableOffsets.find(varName);
+        if (it == variableOffsets.end()) return;  // 未定义的变量
+        
+        uint64_t varOffset = it->second;
+        
+        // 计算 RIP 相对偏移
+        int64_t currentPos = currentAddress + 7;  // MOV reg, [rip+disp32] 的长度
+        int64_t varAddr = dataSegmentBase + varOffset;
+        int32_t ripOffset = varAddr - currentPos;
+        
+        // REX.W + 8B /r  (ModR/M: r64, [rip+disp32])
         emitByte(0x48);  // REX.W
         emitByte(0x8B);  // MOV r64, r/m64
-        emitByte(0x05);  // disp32
-        emitDWord(0);    // 占位符
+        emitByte(0x05);  // ModR/M: 00 000 101 (使用 RIP 相对寻址)
+        emitDWord(ripOffset);  // 32 位 RIP 相对偏移
     }
 }
 

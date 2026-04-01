@@ -470,10 +470,21 @@ void Assembler::encodeMUL(const IRNode& node) {
     }
 }
 
-// IDIV 指令编码（简化）
+// IDIV 指令编码
 void Assembler::encodeDIV(const IRNode& node) {
-    // 简化处理：使用 NOP 占位
-    encodeNOP(node);
+    if (node.operands.size() < 2) return;
+    std::string dest = node.operands[0];
+    std::string src = node.operands[1];
+    
+    // 简化版本：假设使用 RAX 作为被除数
+    if (isRegister(src)) {
+        int srcReg = getRegCode(src);
+        
+        // DIV r64: F7 /6
+        emitByte(0x48);
+        emitByte(0xF7);
+        emitByte(0xF0 + srcReg);  // ModR/M: 11 110 rrr
+    }
 }
 
 // AND 指令编码
@@ -487,8 +498,25 @@ void Assembler::encodeAND(const IRNode& node) {
         int srcReg = getRegCode(src);
         
         emitByte(0x48);
-        emitByte(0x21);
+        emitByte(0x21);  // AND r/m64, r64
         emitByte(0xC0 + (srcReg << 3) + destReg);
+    } else if (isRegister(dest) && isNumber(src)) {
+        int reg = getRegCode(dest);
+        int64_t imm = parseNumber(src);
+        
+        if (imm >= -128 && imm <= 127) {
+            // AND r64, imm8: 83 /4 ib
+            emitByte(0x48);
+            emitByte(0x83);
+            emitByte(0xE0 + reg);  // ModR/M: 11 100 rrr
+            emitByte(imm & 0xFF);
+        } else {
+            // AND r64, imm32: 81 /4 id
+            emitByte(0x48);
+            emitByte(0x81);
+            emitByte(0xE0 + reg);
+            emitDWord(imm & 0xFFFFFFFF);
+        }
     }
 }
 
@@ -503,8 +531,23 @@ void Assembler::encodeOR(const IRNode& node) {
         int srcReg = getRegCode(src);
         
         emitByte(0x48);
-        emitByte(0x09);
+        emitByte(0x09);  // OR r/m64, r64
         emitByte(0xC0 + (srcReg << 3) + destReg);
+    } else if (isRegister(dest) && isNumber(src)) {
+        int reg = getRegCode(dest);
+        int64_t imm = parseNumber(src);
+        
+        if (imm >= -128 && imm <= 127) {
+            emitByte(0x48);
+            emitByte(0x83);
+            emitByte(0xC8 + reg);
+            emitByte(imm & 0xFF);
+        } else {
+            emitByte(0x48);
+            emitByte(0x81);
+            emitByte(0xC8 + reg);
+            emitDWord(imm & 0xFFFFFFFF);
+        }
     }
 }
 
@@ -519,8 +562,23 @@ void Assembler::encodeXOR(const IRNode& node) {
         int srcReg = getRegCode(src);
         
         emitByte(0x48);
-        emitByte(0x31);
+        emitByte(0x31);  // XOR r/m64, r64
         emitByte(0xC0 + (srcReg << 3) + destReg);
+    } else if (isRegister(dest) && isNumber(src)) {
+        int reg = getRegCode(dest);
+        int64_t imm = parseNumber(src);
+        
+        if (imm >= -128 && imm <= 127) {
+            emitByte(0x48);
+            emitByte(0x83);
+            emitByte(0xF0 + reg);
+            emitByte(imm & 0xFF);
+        } else {
+            emitByte(0x48);
+            emitByte(0x81);
+            emitByte(0xF0 + reg);
+            emitDWord(imm & 0xFFFFFFFF);
+        }
     }
 }
 
@@ -530,20 +588,25 @@ void Assembler::encodeNOT(const IRNode& node) {
     std::string reg = node.operands[0];
     int regCode = getRegCode(reg);
     
+    // NOT r64: F7 /2
     emitByte(0x48);
     emitByte(0xF7);
-    emitByte(0xD0 + regCode);
+    emitByte(0xD0 + regCode);  // ModR/M: 11 010 rrr
 }
 
 // NEG 指令编码
 void Assembler::encodeNEG(const IRNode& node) {
     if (node.operands.empty()) return;
-    std::string reg = node.operands[0];
-    int regCode = getRegCode(reg);
+    std::string dest = node.operands[0];
     
-    emitByte(0x48);
-    emitByte(0xF7);
-    emitByte(0xD8 + regCode);
+    if (isRegister(dest)) {
+        int reg = getRegCode(dest);
+        
+        // NEG r64: F7 /3
+        emitByte(0x48);
+        emitByte(0xF7);
+        emitByte(0xD8 + reg);  // ModR/M: 11 011 rrr
+    }
 }
 
 // JL 指令编码
@@ -557,6 +620,7 @@ void Assembler::encodeJL(const IRNode& node) {
         int64_t currentPos = currentAddress + 6;
         int32_t relOffset = targetAddr - currentPos;
         
+        // JL rel32: 0F 7C cd
         emitByte(0x0F);
         emitByte(0x7C);
         emitDWord(relOffset);
@@ -574,6 +638,7 @@ void Assembler::encodeJLE(const IRNode& node) {
         int64_t currentPos = currentAddress + 6;
         int32_t relOffset = targetAddr - currentPos;
         
+        // JLE rel32: 0F 7E cd
         emitByte(0x0F);
         emitByte(0x7E);
         emitDWord(relOffset);
@@ -591,6 +656,7 @@ void Assembler::encodeJG(const IRNode& node) {
         int64_t currentPos = currentAddress + 6;
         int32_t relOffset = targetAddr - currentPos;
         
+        // JG rel32: 0F 7F cd
         emitByte(0x0F);
         emitByte(0x7F);
         emitDWord(relOffset);
@@ -608,13 +674,14 @@ void Assembler::encodeJGE(const IRNode& node) {
         int64_t currentPos = currentAddress + 6;
         int32_t relOffset = targetAddr - currentPos;
         
+        // JGE rel32: 0F 7D cd
         emitByte(0x0F);
         emitByte(0x7D);
         emitDWord(relOffset);
     }
 }
 
-// LEA 指令编码
+// LEA 指令编码（Load Effective Address）
 void Assembler::encodeLEA(const IRNode& node) {
     if (node.operands.size() < 2) return;
     std::string dest = node.operands[0];
@@ -623,9 +690,13 @@ void Assembler::encodeLEA(const IRNode& node) {
     if (isRegister(dest)) {
         int destReg = getRegCode(dest);
         
+        // LEA r64, [rip+disp32]: 48 8D 05 disp32
         emitByte(0x48);
         emitByte(0x8D);
-        emitByte(0x05);  // disp32
-        emitDWord(0);    // 占位符
+        emitByte(0x05);  // ModR/M: 00 000 101 (RIP 相对寻址)
+        emitDWord(0);    // 占位符，需要后续填充
     }
 }
+
+
+

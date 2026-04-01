@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 #include "../router/MessageProtocol.h"
+#include "baseVM.h"  // 新增：继承 baseVM
 
 // ===== x86 寄存器定义 =====
 enum class X86Reg {
@@ -48,22 +49,27 @@ struct X86VMConfig {
 };
 
 // ===== x86 CPU VM 类 =====
-class X86CPUVM {
+class X86CPUVM : public baseVM {
 public:
     explicit X86CPUVM(uint64_t vm_id, const X86VMConfig& config = X86VMConfig());
     ~X86CPUVM();
 
     // ===== 核心控制接口 =====
-    void start();
-    void stop();
-    void reset();
+    void start() override;
+    void stop() override;
+    void reset();  // X86 特有方法
+    VMState get_state() const override { 
+        return state_ == X86VMState::RUNNING ? VMState::RUNNING : VMState::CREATED; 
+    }
     
     // ===== 执行接口 =====
-    int execute_instruction();  // 执行一条指令，返回执行的字节数
-    void run_loop();            // 连续执行直到 HALT 或中断
+    bool execute_instruction() override;  // 实现 baseVM 接口
+    int execute_instruction_x86();        // x86 特定版本，返回执行的字节数
+    void run_loop();                      // 连续执行（X86 特有方法）
     
     // ===== 状态查询 =====
-    X86VMState get_state() const { return state_; }
+    // get_state() 已经在上面定义为返回 VMState
+    X86VMState get_x86_state() const { return state_; }  // X86 特定状态
     uint64_t get_vm_id() const { return vm_id_; }
     
     // ===== 寄存器访问 =====
@@ -95,8 +101,21 @@ public:
     void load_binary(const std::vector<uint8_t>& binary, uint64_t load_addr = 0);
     void load_elf(const std::vector<uint8_t>& elf_binary);  // ELF 格式支持
     
+    // baseVM 接口实现
+    void load_program(const std::vector<uint32_t>& code) override {
+        // 将 32 位代码转换为字节流加载
+        std::vector<uint8_t> binary(code.size() * 4);
+        for (size_t i = 0; i < code.size(); ++i) {
+            binary[i * 4 + 0] = code[i] & 0xFF;
+            binary[i * 4 + 1] = (code[i] >> 8) & 0xFF;
+            binary[i * 4 + 2] = (code[i] >> 16) & 0xFF;
+            binary[i * 4 + 3] = (code[i] >> 24) & 0xFF;
+        }
+        load_binary(binary, config_.entry_point);
+    }
+    
     // ===== 中断处理 =====
-    void handle_interrupt(const InterruptResult& result);
+    void handle_interrupt(const InterruptResult& result) override;  // 实现 baseVM 接口
     void trigger_interrupt(uint8_t vector);  // 触发硬件中断
     
     // ===== 调试接口 =====

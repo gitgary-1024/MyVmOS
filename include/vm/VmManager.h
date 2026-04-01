@@ -27,6 +27,10 @@ public:
     void unregister_vm(uint64_t vm_id);
     std::shared_ptr<baseVM> get_vm(uint64_t vm_id);
     
+    // VM 创建/销毁（简化接口，供 RuntimeInterface 使用）
+    int createX86VM();  // 创建 X86 VM，返回 VM ID，失败返回 -1
+    bool destroyVM(int vmId);  // 销毁指定 VM，成功返回 true
+    
     // VM 创建（普通方式，保持兼容性）
     template<typename VMType, typename... Args>
     static std::shared_ptr<VMType> make_vm(Args&&... args) {

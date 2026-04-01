@@ -1,6 +1,8 @@
 #include "vm/VmManager.h"
 #include "vm/baseVM.h"
 #include "vm/SchedulerManager.h"
+#include "vm/mVM.h"
+#include "vm/X86CPU.h"  // 新增：X86 CPU VM
 #include "router/RouterCore.h"
 #include <iostream>
 #include <chrono>
@@ -67,6 +69,55 @@ std::shared_ptr<baseVM> VmManager::get_vm(uint64_t vm_id) {
     std::lock_guard<std::mutex> lock(vm_mtx_);
     auto it = vms_.find(vm_id);
     return (it != vms_.end()) ? it->second : nullptr;
+}
+
+// ===== 简化的 VM 创建/销毁接口（供 RuntimeInterface 使用） =====
+
+int VmManager::createX86VM() {
+    try {
+        // 生成新的 VM ID
+        static std::atomic<uint64_t> next_vm_id{1};
+        uint64_t new_vm_id = next_vm_id.fetch_add(1);
+        
+        // 创建 X86 CPU VM（现在 X86CPUVM 继承自 baseVM）
+        auto x86_vm = std::make_shared<X86CPUVM>(new_vm_id);
+        
+        // 注册到 VmManager
+        register_vm(x86_vm);
+        
+        std::cout << "[VmManager] Created X86VM with ID: " << new_vm_id << std::endl;
+        
+        return static_cast<int>(new_vm_id);
+        
+    } catch (const std::exception& e) {
+        std::cerr << "[VmManager] Failed to create X86VM: " << e.what() << std::endl;
+        return -1;
+    }
+}
+
+bool VmManager::destroyVM(int vmId) {
+    if (vmId < 0) {
+        return false;
+    }
+    
+    try {
+        // 检查 VM 是否存在
+        auto vm = get_vm(static_cast<uint64_t>(vmId));
+        if (!vm) {
+            std::cerr << "[VmManager] VM " << vmId << " not found" << std::endl;
+            return false;
+        }
+        
+        // 调用现有的异步销毁方法
+        destroy_vm(static_cast<uint64_t>(vmId));
+        
+        std::cout << "[VmManager] Destroying VM " << vmId << " asynchronously" << std::endl;
+        return true;
+        
+    } catch (const std::exception& e) {
+        std::cerr << "[VmManager] Failed to destroy VM " << vmId << ": " << e.what() << std::endl;
+        return false;
+    }
 }
 
 void VmManager::handle_vm_interrupt_request(const Message& msg) {

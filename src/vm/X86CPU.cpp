@@ -5,7 +5,7 @@
 
 // ===== 构造函数 =====
 X86CPUVM::X86CPUVM(uint64_t vm_id, const X86VMConfig& config)
-    : vm_id_(vm_id)
+    : baseVM(vm_id)  // 调用 baseVM 构造函数，初始化 vm_id_
     , config_(config)
     , registers_{}
     , physical_memory_(config.memory_size)
@@ -66,9 +66,9 @@ void X86CPUVM::reset() {
 }
 
 // ===== 执行接口 =====
-int X86CPUVM::execute_instruction() {
+bool X86CPUVM::execute_instruction() {
     if (!running_ || state_ != X86VMState::RUNNING) {
-        return 0;
+        return false;
     }
     
     // 检查是否有待处理的中断
@@ -93,7 +93,7 @@ int X86CPUVM::execute_instruction() {
         }
     }
     
-    return instruction_length;
+    return instruction_length > 0;  // 返回是否成功执行
 }
 
 void X86CPUVM::run_loop() {

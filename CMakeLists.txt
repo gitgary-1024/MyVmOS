@@ -19,6 +19,7 @@ include_directories(
     ${CMAKE_SOURCE_DIR}/include/vm
     ${CMAKE_SOURCE_DIR}/include/vm/Scheduler
     ${CMAKE_SOURCE_DIR}/include/utils
+    ${CMAKE_SOURCE_DIR}/include/utils/Loader  # Loader 模块
 )
 
 # 收集所有源文件
@@ -40,6 +41,8 @@ set(SOURCES
     src/vm/Scheduler/QuotaScheduler.cpp
     src/utils/TimeoutManager.cpp
     src/utils/ThreadPool.cpp
+    src/utils/RuntimeInterface.cpp  # 新增：运行时交互接口
+    src/utils/Loader/Loader.cpp     # Loader 模块
     src/vm/X86CPU.cpp
     src/vm/X86_decode.cpp
     src/vm/X86_instructions.cpp
@@ -103,6 +106,18 @@ target_link_libraries(test_router myos_lib Threads::Threads)
 # 日志测试
 add_executable(test_logging tests/test_logging.cpp)
 target_link_libraries(test_logging myos_lib)
+
+# RuntimeInterface 测试
+add_executable(test_runtime_full tests/test_runtime_full.cpp)
+target_link_libraries(test_runtime_full myos_lib Threads::Threads)
+
+# Loader 测试
+add_executable(test_loader tests/test_loader.cpp)
+target_link_libraries(test_loader myos_lib)
+
+# VmManager 创建/销毁测试
+add_executable(test_vm_create_destroy tests/test_vm_create_destroy.cpp)
+target_link_libraries(test_vm_create_destroy myos_lib Threads::Threads)
 
 # Compiler 集成测试
 if(BUILD_COMPILER)

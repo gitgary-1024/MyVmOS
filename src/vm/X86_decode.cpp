@@ -185,6 +185,20 @@ int X86CPUVM::decode_and_execute() {
                       << std::hex << get_rip() << std::dec << std::endl;
             return 1;
         
+        // ===== SYSCALL =====
+        case 0x05:  // SYSCALL (简化实现，使用 0x05 作为 syscall 操作码)
+            {
+                // 系统调用号从 RAX 寄存器获取
+                uint64_t syscall_num = get_register(X86Reg::RAX);
+                std::cout << "[X86VM-" << vm_id_ << "] SYSCALL triggered with num=" 
+                          << syscall_num << " at RIP=0x" 
+                          << std::hex << get_rip() << std::dec << std::endl;
+                
+                // 触发系统调用中断（使用特定的中断向量，例如 0x80）
+                trigger_syscall(syscall_num);
+                return 1;
+            }
+        
         default:
             std::cerr << "[X86VM-" << vm_id_ << "] Unknown opcode: 0x" 
                       << std::hex << static_cast<int>(first_byte) << std::dec

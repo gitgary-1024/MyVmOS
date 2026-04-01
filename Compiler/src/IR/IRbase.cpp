@@ -43,6 +43,7 @@ std::unordered_map<IROp, std::string> IRopTOStr = {
     // 其他
     {IROp::NOP, "nop"},
     {IROp::LEA, "lea"},
+    {IROp::SYSCALL, "syscall"},
 };
 
 IRNode::IRNode(IROp op, const std::vector<std::string>& operands, 

@@ -1,0 +1,7 @@
+int main() {
+    syscall(1);
+    syscall(2);
+    syscall(3);
+    
+    return 0;
+}

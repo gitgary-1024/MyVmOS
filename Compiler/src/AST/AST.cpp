@@ -307,6 +307,26 @@ ASTBaseNode* AST::parseFunctionDeclaration() {
     return func;
 }
 
+// 解析 syscall 语句（新增）
+ASTBaseNode* AST::parseSyscallStatement() {
+    consume(); // 消耗 syscall 关键字
+    expect("("); // 消耗左括号
+    
+    // 解析系统调用号表达式
+    ASTBaseNode* exprNode = parseLogicalOr();
+    Expression* syscallExpr = dynamic_cast<Expression*>(exprNode);
+    
+    if (!syscallExpr) {
+        throw std::runtime_error("Invalid syscall number expression");
+    }
+    
+    expect(")"); // 消耗右括号
+    expect(";"); // 消耗分号
+    
+    // 创建 syscall 语句节点
+    return new SyscallStatement(syscallExpr);
+}
+
 // 解析函数调用
 ASTBaseNode* AST::parseFunctionCall(const std::string& funcName) {
     FunctionCall* call = new FunctionCall(funcName);
@@ -366,6 +386,11 @@ ASTBaseNode* AST::parseStatement() {
     // 处理 for 语句
     if (content == "for") {
         return parseForStatement();
+    }
+    
+    // 处理 syscall 语句（新增）
+    if (content == "syscall") {
+        return parseSyscallStatement();
     }
     
     // 处理语句块

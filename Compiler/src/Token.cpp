@@ -5,6 +5,7 @@ std::unordered_map<std::string, TokenType> StringToTokenType = {
     {"int", Keywords}, {"return", Keywords},
     {"if", Keywords}, {"else", Keywords},
     {"for", Keywords}, // 关键字
+    {"syscall", Keywords}, // 系统调用关键字
     
     {"+", Operators}, {"-", Operators},
     {"*", Operators}, {"/", Operators}, // 算符

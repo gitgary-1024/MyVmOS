@@ -178,6 +178,16 @@ void ASTPrinter::printNode(ASTBaseNode* node, int depth) {
             break;
         }
         
+        case ASTBaseNode::SYSCALL_STATEMENT: {
+            auto* syscallStmt = dynamic_cast<SyscallStatement*>(node);
+            std::cout << "SyscallStatement" << std::endl;
+            // 打印系统调用号表达式
+            printIndent(depth + 1);
+            std::cout << "SyscallNumber:" << std::endl;
+            printNode(syscallStmt->syscallNumber, depth + 2);
+            break;
+        }
+        
         default:
             std::cout << "UnknownNode" << std::endl;
     }

@@ -295,6 +295,17 @@ void IR::generate(ASTBaseNode* node) {
             break;
         }
         
+        case ASTBaseNode::SYSCALL_STATEMENT: {
+            auto* syscallStmt = dynamic_cast<SyscallStatement*>(node);
+            // 生成系统调用号表达式，结果在虚拟寄存器中
+            std::string syscallNumVReg = generateExpression(syscallStmt->syscallNumber);
+            // 将系统调用号移动到 EAX（x86  syscall 约定）
+            irNodes.push_back({IROp::MOV, {"eax", syscallNumVReg}, "Move syscall num to EAX"});
+            // 生成 syscall 指令
+            irNodes.push_back({IROp::SYSCALL, {}, "Syscall instruction"});
+            break;
+        }
+        
         case ASTBaseNode::FUNC_DECL: {
             auto* func = dynamic_cast<FunctionDeclaration*>(node);
             // 函数入口标签

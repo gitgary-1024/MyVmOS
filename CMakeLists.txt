@@ -119,6 +119,10 @@ target_link_libraries(test_loader myos_lib)
 add_executable(test_vm_create_destroy tests/test_vm_create_destroy.cpp)
 target_link_libraries(test_vm_create_destroy myos_lib Threads::Threads)
 
+# SYSCALL 测试
+add_executable(test_vm_syscall tests/test_vm_syscall.cpp)
+target_link_libraries(test_vm_syscall myos_lib Threads::Threads)
+
 # Compiler 集成测试
 if(BUILD_COMPILER)
     add_executable(test_compiler_integration tests/test_compiler_integration.cpp)

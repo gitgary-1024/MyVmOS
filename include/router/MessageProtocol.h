@@ -46,7 +46,10 @@ enum class MessageType {
     ROUTER_PING,
     ROUTER_PONG,
     SYSTEM_SHUTDOWN_REQUEST,
-    SYSTEM_SHUTDOWN_ACK
+    SYSTEM_SHUTDOWN_ACK,
+        
+    // --- 系统调用 ---
+    SYSCALL  // 系统调用请求（从 VM 发起到内核/外设）
 };
 
 // ===== 2. 消息ID生成规则 =====
@@ -185,6 +188,16 @@ struct VMWakeUpNotify {
     uint64_t vm_id;
 };
 
+// ===== 系统调用相关 =====
+struct SyscallRequest {
+    uint64_t vm_id;
+    uint64_t syscall_number;  // 系统调用号
+    uint64_t arg1 = 0;        // 参数 1
+    uint64_t arg2 = 0;        // 参数 2
+    uint64_t arg3 = 0;        // 参数 3
+    uint64_t arg4 = 0;        // 参数 4
+};
+
 // ===== 4. 通用消息结构体 =====
 struct Message {
     uint64_t sender_id = 0;
@@ -202,7 +215,8 @@ struct Message {
         PeriphLockRequest,
         PeriphLockGranted,
         SchedulerTaskEnqueue,
-        VMWakeUpNotify                 // ✅ 新增到 variant 列表
+        VMWakeUpNotify,               // ✅ 新增到 variant 列表
+        SyscallRequest                // 系统调用请求
     > payload;
 
     // 默认构造函数

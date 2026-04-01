@@ -60,6 +60,9 @@ private:
     // 解析 for 语句
     ASTBaseNode* parseForStatement();
     
+    // 解析 syscall 语句（新增）
+    ASTBaseNode* parseSyscallStatement();
+    
     // 解析函数声明
     ASTBaseNode* parseFunctionDeclaration();
     

@@ -221,6 +221,49 @@ void X86CPUVM::trigger_interrupt(uint8_t vector) {
     state_ = X86VMState::WAITING_INTERRUPT;
 }
 
+void X86CPUVM::trigger_syscall(uint64_t syscall_num) {
+    // 系统调用实现：通过路由树向外设发送消息
+    // 1. 保存现场（RAX 已经包含 syscall_num）
+    push(get_rcx());  // 保存返回地址
+    push(get_r11());  // 保存 RFLAGS
+    
+    // 2. 设置返回地址为下一条指令
+    uint64_t ret_rip = get_rip();
+    
+    // 3. 构造系统调用消息
+    Message msg;
+    msg.sender_id = vm_id_;
+    msg.receiver_id = MODULE_ROUTER_CORE;  // 发送给路由核心
+    msg.type = MessageType::SYSCALL;
+    
+    SyscallRequest req;
+    req.vm_id = vm_id_;
+    req.syscall_number = syscall_num;
+    // 可以从其他寄存器获取参数，如 RDI, RSI, RDX, RCX 等
+    msg.set_payload(req);
+    
+    // 4. 打印日志（后续会通过 VmManager 发送到路由树）
+    std::cout << "[X86VM-" << vm_id_ << "] SYSCALL #" << syscall_num 
+              << " - Sending to router tree" << std::endl;
+    
+    // 5. 更新状态
+    state_ = X86VMState::WAITING_INTERRUPT;
+    
+    // 6. 跳转到系统调用处理程序（从 IDT 获取）
+    uint64_t idt_base = 0;
+    uint64_t syscall_handler = read_qword(idt_base + 0x80 * 8);  // 使用 0x80 号中断向量
+    if (syscall_handler != 0) {
+        set_rip(syscall_handler);
+    } else {
+        // 如果没有设置处理程序，直接返回到用户空间
+        std::cout << "[X86VM-" << vm_id_ << "] No syscall handler, returning" << std::endl;
+        set_rip(ret_rip);
+    }
+    
+    // 7. 清除 IF 标志
+    set_flag(FLAG_IF, false);
+}
+
 // ===== 标志位操作 =====
 void X86CPUVM::update_flags_arithmetic(uint64_t result, uint64_t op1, uint64_t op2, bool is_signed) {
     // ZF: 零标志

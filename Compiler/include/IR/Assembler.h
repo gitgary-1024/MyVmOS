@@ -56,6 +56,7 @@ private:
     void encodePOP(const IRNode& node);
     void encodeLABEL(const IRNode& node);
     void encodeLEA(const IRNode& node);
+    void encodeSYSCALL(const IRNode& node);  // 新增：系统调用
     void encodeSAL(const IRNode& node);
     void encodeSAR(const IRNode& node);
     void encodeSHL(const IRNode& node);

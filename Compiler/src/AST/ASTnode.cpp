@@ -137,3 +137,13 @@ ForStatement::~ForStatement() {
     delete updateStmt;
     delete body;
 }
+
+// SyscallStatement 实现
+SyscallStatement::SyscallStatement(Expression* num)
+    : syscallNumber(num) {
+    nodeType = SYSCALL_STATEMENT;
+}
+
+SyscallStatement::~SyscallStatement() {
+    delete syscallNumber;
+}

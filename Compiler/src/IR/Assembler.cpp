@@ -164,6 +164,7 @@ std::vector<uint8_t> Assembler::compile() {
             case IROp::POP:     encodePOP(node); break;
             case IROp::LABEL:   encodeLABEL(node); break;
             case IROp::LEA:     encodeLEA(node); break;
+            case IROp::SYSCALL: encodeSYSCALL(node); break;
             default:
                 std::cerr << "Warning: Unsupported IR operation: " 
                           << static_cast<int>(node.op) << std::endl;
@@ -508,6 +509,13 @@ void Assembler::encodeNOP(const IRNode& node) {
 void Assembler::encodeLABEL(const IRNode& node) {
     // Label 已经在第一遍扫描时记录了地址
     // 这里不需要生成任何代码
+}
+
+// SYSCALL 指令编码
+void Assembler::encodeSYSCALL(const IRNode& node) {
+    // x86-64 syscall 指令编码：0F 05
+    emitByte(0x0F);
+    emitByte(0x05);
 }
 
 // IMUL 指令编码

@@ -22,7 +22,8 @@ public:
         FUNC_DECL,
         FUNC_CALL,
         IF_STATEMENT,
-        FOR_STATEMENT
+        FOR_STATEMENT,
+        SYSCALL_STATEMENT  // 新增：系统调用语句
     };
     
 protected:
@@ -144,6 +145,15 @@ public:
     
     ForStatement(ASTBaseNode* init, Expression* cond, ASTBaseNode* update, ASTBaseNode* b);
     ~ForStatement();
+};
+
+// 新增：系统调用语句节点
+class SyscallStatement : public ASTBaseNode {
+public:
+    Expression* syscallNumber; // 系统调用号
+    
+    SyscallStatement(Expression* num);
+    ~SyscallStatement();
 };
 
 #endif /* ASTNODE_H */

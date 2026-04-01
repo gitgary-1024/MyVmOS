@@ -49,6 +49,7 @@ enum class IROp {
     // 其他
     NOP,        // nop - 空操作
     LEA,        // lea - 加载有效地址
+    SYSCALL,    // syscall - 系统调用
 };
 
 extern std::unordered_map<IROp, std::string> IRopTOStr;

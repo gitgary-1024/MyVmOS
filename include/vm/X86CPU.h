@@ -80,6 +80,8 @@ public:
     uint64_t get_rip() const { return registers_[static_cast<size_t>(X86Reg::RIP)]; }
     uint64_t get_rsp() const { return registers_[static_cast<size_t>(X86Reg::RSP)]; }
     uint64_t get_rbp() const { return registers_[static_cast<size_t>(X86Reg::RBP)]; }
+    uint64_t get_rcx() const { return registers_[static_cast<size_t>(X86Reg::RCX)]; }
+    uint64_t get_r11() const { return registers_[static_cast<size_t>(X86Reg::R11)]; }
     uint64_t get_rflags() const { return registers_[static_cast<size_t>(X86Reg::RFLAGS)]; }
     
     void set_rip(uint64_t value) { registers_[static_cast<size_t>(X86Reg::RIP)] = value; }
@@ -117,6 +119,7 @@ public:
     // ===== 中断处理 =====
     void handle_interrupt(const InterruptResult& result) override;  // 实现 baseVM 接口
     void trigger_interrupt(uint8_t vector);  // 触发硬件中断
+    void trigger_syscall(uint64_t syscall_num);  // 触发系统调用
     
     // ===== 调试接口 =====
     void dump_registers() const;

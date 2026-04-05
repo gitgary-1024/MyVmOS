@@ -126,6 +126,11 @@ public:
     void dump_memory(uint64_t addr, size_t len) const;
     void disassemble_current() const;  // 反汇编当前指令
     
+    // ===== CFG 分析接口 =====
+    void build_cfg(uint64_t entry_addr);  // 构建控制流图
+    bool has_cfg() const { return cfg_ != nullptr; }
+    const void* get_cfg() const { return cfg_; }  // 返回 CFG 指针（用于外部查询）
+    
 private:
     // ===== x86 指令解码与执行 =====
     int decode_and_execute();
@@ -175,7 +180,7 @@ private:
     void write_at_rip(int offset, T value);
 
 private:
-    uint64_t vm_id_;
+    // vm_id_ 继承自 baseVM，不需要重复定义
     X86VMConfig config_;
     
     // 寄存器文件
@@ -198,6 +203,9 @@ private:
     
     // 调试回调
     std::function<void(uint64_t rip, const std::string& instruction)> on_instruction_executed_;
+    
+    // CFG 分析（可选）
+    void* cfg_;  // ControlFlowGraph*，使用 void* 避免头文件依赖
 };
 
 #endif // LIVS_VM_X86_CPU_H

@@ -68,7 +68,7 @@ int X86CPUVM::execute_logical(uint64_t rip) {
         }
         
         default:
-            std::cerr << "[X86VM-" << vm_id_ << "] Unknown logical opcode: 0x" 
+            std::cerr << "[X86VM-" << get_vm_id() << "] Unknown logical opcode: 0x"
                       << std::hex << static_cast<int>(opcode) << std::dec << std::endl;
             return 1;
     }
@@ -83,7 +83,8 @@ int X86CPUVM::execute_branch(uint64_t rip) {
     // JMP rel8 (0xEB)
     if (opcode == 0xEB) {
         int8_t offset = read_byte(rip + 1);
-        return 2 + offset;  // RIP 会自动增加
+        set_rip(get_rip() + 2 + offset);  // 显式设置 RIP，与 JMP rel32 保持一致
+        return 2;
     }
     
     // JMP rel32 (0xE9)
@@ -146,7 +147,7 @@ int X86CPUVM::execute_branch(uint64_t rip) {
         return 2;
     }
     
-    std::cerr << "[X86VM-" << vm_id_ << "] Unknown branch opcode: 0x" 
+    std::cerr << "[X86VM-" << get_vm_id() << "] Unknown branch opcode: 0x" 
               << std::hex << static_cast<int>(opcode) << std::dec << std::endl;
     return 1;
 }
@@ -215,7 +216,7 @@ int X86CPUVM::execute_call_ret(uint64_t rip) {
         }
     }
     
-    std::cerr << "[X86VM-" << vm_id_ << "] Unknown CALL/RET opcode: 0x" 
+    std::cerr << "[X86VM-" << get_vm_id() << "] Unknown CALL/RET opcode: 0x" 
               << std::hex << static_cast<int>(opcode) << std::dec << std::endl;
     return 1;
 }
@@ -237,7 +238,7 @@ int X86CPUVM::execute_stack_ops(uint64_t rip) {
         return 1;
     }
     
-    std::cerr << "[X86VM-" << vm_id_ << "] Unknown stack opcode: 0x" 
+    std::cerr << "[X86VM-" << get_vm_id() << "] Unknown stack opcode: 0x" 
               << std::hex << static_cast<int>(opcode) << std::dec << std::endl;
     return 1;
 }
@@ -260,7 +261,7 @@ int X86CPUVM::execute_flag_ops(uint64_t rip) {
             return 1;
         
         default:
-            std::cerr << "[X86VM-" << vm_id_ << "] Unknown flag opcode: 0x" 
+            std::cerr << "[X86VM-" << get_vm_id() << "] Unknown flag opcode: 0x"
                       << std::hex << static_cast<int>(opcode) << std::dec << std::endl;
             return 1;
     }
@@ -272,7 +273,7 @@ int X86CPUVM::execute_interrupt(uint64_t rip) {
     
     // INT 3 (断点) (0xCC)
     if (opcode == 0xCC) {
-        std::cout << "[X86VM-" << vm_id_ << "] INT3 breakpoint at RIP=0x" 
+        std::cout << "[X86VM-" << get_vm_id() << "] INT3 breakpoint at RIP=0x"
                   << std::hex << get_rip() << std::dec << std::endl;
         
         trigger_interrupt(3);  // 断点异常
@@ -282,7 +283,7 @@ int X86CPUVM::execute_interrupt(uint64_t rip) {
     // INT imm8 (0xCD)
     if (opcode == 0xCD) {
         uint8_t vector = read_byte(rip + 1);
-        std::cout << "[X86VM-" << vm_id_ << "] INT 0x" 
+        std::cout << "[X86VM-" << get_vm_id() << "] INT 0x"
                   << std::hex << static_cast<int>(vector) << std::dec
                   << " at RIP=0x" << get_rip() << std::endl;
         
@@ -290,7 +291,7 @@ int X86CPUVM::execute_interrupt(uint64_t rip) {
         return 2;
     }
     
-    std::cerr << "[X86VM-" << vm_id_ << "] Unknown interrupt opcode: 0x" 
+    std::cerr << "[X86VM-" << get_vm_id() << "] Unknown interrupt opcode: 0x" 
               << std::hex << static_cast<int>(opcode) << std::dec << std::endl;
     return 1;
 }
@@ -339,7 +340,7 @@ int X86CPUVM::execute_string_ops(uint64_t rip) {
         }
         
         default:
-            std::cerr << "[X86VM-" << vm_id_ << "] Unknown string opcode: 0x" 
+            std::cerr << "[X86VM-" << get_vm_id() << "] Unknown string opcode: 0x"
                       << std::hex << static_cast<int>(opcode) << std::dec << std::endl;
             return 1;
     }

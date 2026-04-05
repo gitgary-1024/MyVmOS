@@ -20,6 +20,7 @@ include_directories(
     ${CMAKE_SOURCE_DIR}/include/vm/Scheduler
     ${CMAKE_SOURCE_DIR}/include/utils
     ${CMAKE_SOURCE_DIR}/include/utils/Loader  # Loader 模块
+    ${CMAKE_SOURCE_DIR}/src/vm/disassembly  # CFG 分析模块
 )
 
 # 收集所有源文件
@@ -50,6 +51,7 @@ set(SOURCES
     src/vm/X86_other_instructions.cpp
     # Capstone 反汇编模块
     src/vm/disassembly/CapstoneDisassembler.cpp
+    src/vm/disassembly/ControlFlowGraph.cpp  # CFG 支持
     src/vm/disassembly/x86/X86Instruction.cpp
     src/vm/disassembly/x86/X86ExecutorRegistry.cpp  # 新增：执行器注册表
 )
@@ -97,6 +99,10 @@ target_link_libraries(test_ir_executor myos_lib ${CAPSTONE_LIB_DIR}/libcapstone.
 # 反汇编集成测试
 add_executable(test_disassembly_integration tests/test_disassembly_integration.cpp)
 target_link_libraries(test_disassembly_integration myos_lib ${CAPSTONE_LIB_DIR}/libcapstone.a)
+
+# CFG 控制流图测试
+add_executable(test_cfg_analysis tests/test_cfg_analysis.cpp)
+target_link_libraries(test_cfg_analysis myos_lib ${CAPSTONE_LIB_DIR}/libcapstone.a)
 
 # ==================== 测试程序 ====================
 

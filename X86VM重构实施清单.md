@@ -108,14 +108,90 @@
 
 ---
 
-## 📋 Phase 2: VM 集成（1-2 天）
+## 📋 Phase 2: VM 集成与反汇编优化（3-5 天）
 
-### ✅ 任务 2.1: 修改 X86CPUVM 头文件
+### 🎯 Phase 2 架构说明
+
+Phase 2 分为三个递进的子阶段，逐步完善 x86 反汇编和执行能力：
+
+**Phase 2.1**: 基础执行器逻辑实现（1-2 天）
+- 实现控制流指令的执行器（JMP, CALL, RET, 条件跳转）
+- 不处理复杂的入口点追踪，假设线性执行
+
+**Phase 2.2**: 入口点追踪机制（1 天）
+- 使用 `vector<bool>` 追踪哪些地址已被反汇编为入口点
+- 避免重复反汇编和指令重叠
+- 支持基本的跳转目标发现
+
+**Phase 2.3**: 完整反汇编图（1-2 天）
+- 构建控制流图（CFG）
+- 支持基本块（Basic Block）分析
+- 处理复杂的代码路径和数据流
+
+---
+
+## 📋 Phase 2.1: 基础执行器逻辑（1-2 天）
+
+### ✅ 任务 2.1.1: 实现 JMP 执行器
+- [ ] 创建 `JmpExecutor`
+  - [ ] 支持相对跳转（JMP rel8/rel32）
+  - [ ] 支持绝对跳转（JMP reg/mem）
+  - [ ] 更新 RIP 寄存器
+  - [ ] 单元测试验证
+- [ ] 在注册表中注册 "jmp" 执行器
+
+**预计时间**: 2-3 小时  
+**负责人**: ___  
+**完成日期**: ___  
+
+---
+
+### ✅ 任务 2.1.2: 实现 CALL/RET 执行器
+- [ ] 创建 `CallExecutor`
+  - [ ] 压入返回地址到栈
+  - [ ] 跳转到目标地址
+  - [ ] 更新 RIP
+  - [ ] 单元测试验证
+- [ ] 创建 `RetExecutor`
+  - [ ] 从栈弹出返回地址
+  - [ ] 跳转到返回地址
+  - [ ] 更新 RIP
+  - [ ] 单元测试验证
+- [ ] 在注册表中注册 "call" 和 "ret" 执行器
+
+**预计时间**: 2-3 小时  
+**负责人**: ___  
+**完成日期**: ___  
+
+---
+
+### ✅ 任务 2.1.3: 实现条件跳转执行器
+- [ ] 创建条件跳转执行器基类或模板
+- [ ] 实现常见条件跳转：
+  - [ ] JE/JZ (相等/零)
+  - [ ] JNE/JNZ (不相等/非零)
+  - [ ] JL/JNGE (小于)
+  - [ ] JG/JNLE (大于)
+  - [ ] JB/JNAE (低于)
+  - [ ] JA/JNBE (高于)
+  - [ ] JS (符号)
+  - [ ] JNS (非符号)
+- [ ] 读取 RFLAGS 判断条件
+- [ ] 条件满足时更新 RIP，否则顺序执行
+- [ ] 单元测试验证（至少测试 3 种条件）
+
+**预计时间**: 4-6 小时  
+**负责人**: ___  
+**完成日期**: ___  
+
+---
+
+### ✅ 任务 2.1.4: 修改 X86CPUVM 头文件
 - [ ] 编辑 `include/vm/X86CPU.h`
   - [ ] 添加 `#include "disassembly/CapstoneDisassembler.h"`
   - [ ] 添加 `disassembler_` 成员变量
   - [ ] 添加 `exec_context_` 成员变量
-  - [ ] 添加 `instruction_cache_` 成员变量
+  - [ ] 添加 `instruction_cache_` 成员变量（std::unordered_map）
   - [ ] 声明 `execute_instruction_ir()` 方法
   - [ ] 声明 `fetch_instruction()` 方法
   - [ ] 重命名旧方法为 `execute_instruction_legacy()`
@@ -126,7 +202,7 @@
 
 ---
 
-### ✅ 任务 2.2: 实现构造函数初始化
+### ✅ 任务 2.1.5: 实现构造函数初始化
 - [ ] 编辑 `src/vm/X86CPU.cpp`
   - [ ] 初始化 `disassembler_` (MODE_64)
   - [ ] 启用详细模式 `set_detail_mode(true)`
@@ -140,7 +216,7 @@
 
 ---
 
-### ✅ 任务 2.3: 实现新的执行流程
+### ✅ 任务 2.1.6: 实现新的执行流程
 - [ ] 实现 `fetch_instruction(uint64_t addr)`
   - [ ] 检查缓存
   - [ ] 从内存读取最多 15 字节
@@ -162,7 +238,7 @@
 
 ---
 
-### ✅ 任务 2.4: 向后兼容
+### ✅ 任务 2.1.7: 向后兼容
 - [ ] 修改 `execute_instruction()` 调用 `execute_instruction_ir()`
 - [ ] 保留旧的手写解码器代码（注释掉或移到单独文件）
 - [ ] 添加编译开关 `#define USE_IR_EXECUTION 1`
@@ -174,14 +250,229 @@
 
 ---
 
-### 🎯 Phase 2 验收标准
+### 🎯 Phase 2.1 验收标准
 - [ ] VM 能够使用新架构运行现有测试程序
 - [ ] `test_x86_simple.cpp` 通过
 - [ ] `test_x86_cpu.cpp` 通过
 - [ ] 寄存器状态与旧架构一致
 - [ ] 性能可接受（执行时间 < 2x 旧架构）
+- [ ] 所有控制流指令执行器通过单元测试
 
-**Phase 2 完成日期**: ___  
+**Phase 2.1 完成日期**: ___  
+**代码审查人**: ___  
+**审查日期**: ___  
+
+---
+
+## 📋 Phase 2.2: 入口点追踪机制（1 天）
+
+### 🎯 设计目标
+
+解决 x86 可变长度指令导致的反汇编问题：
+- **问题**: JMP/CALL 可以跳转到任意字节位置，可能导致指令重叠
+- **方案**: 使用 `vector<bool>` 标记哪些地址已被作为入口点反汇编过
+- **优势**: 简单高效，避免重复工作，检测潜在冲突
+
+---
+
+### ✅ 任务 2.2.1: 创建 DisassemblyTracker 类
+- [ ] 创建 `include/vm/disassembly/DisassemblyTracker.h`
+  ```cpp
+  class DisassemblyTracker {
+  private:
+      std::vector<uint8_t> state_;  // 0=未处理, 1=入口点, 2=跳转目标, 3=已处理
+      
+  public:
+      DisassemblyTracker(size_t code_size);
+      
+      bool is_entry_point(uint64_t offset) const;
+      void mark_as_entry(uint64_t offset);
+      void mark_as_jump_target(uint64_t offset);
+      void mark_as_processed(uint64_t offset);
+      bool has_conflict(uint64_t offset) const;  // 检测重叠
+  };
+  ```
+- [ ] 创建 `src/vm/disassembly/DisassemblyTracker.cpp`
+  - [ ] 实现所有方法
+  - [ ] 添加边界检查
+  - [ ] 单元测试验证
+
+**预计时间**: 2-3 小时  
+**负责人**: ___  
+**完成日期**: ___  
+
+---
+
+### ✅ 任务 2.2.2: 集成到 CapstoneDisassembler
+- [ ] 修改 `CapstoneDisassembler` 类
+  - [ ] 添加 `DisassemblyTracker tracker_` 成员
+  - [ ] 在构造函数中初始化 tracker
+  - [ ] 修改 `disassemble()` 方法使用 tracker
+- [ ] 反汇编前检查是否已处理
+- [ ] 反汇编后标记为已处理
+- [ ] 检测并报告冲突（同一地址被不同方式反汇编）
+
+**预计时间**: 2-3 小时  
+**负责人**: ___  
+**完成日期**: ___  
+
+---
+
+### ✅ 任务 2.2.3: 在执行器中发现跳转目标
+- [ ] 修改 `JmpExecutor`
+  - [ ] 计算跳转目标地址
+  - [ ] 通知 tracker 标记为新入口点
+- [ ] 修改 `CallExecutor`
+  - [ ] 计算调用目标地址
+  - [ ] 通知 tracker 标记为新入口点
+- [ ] 修改条件跳转执行器
+  - [ ] 条件满足时标记目标地址
+
+**预计时间**: 2-3 小时  
+**负责人**: ___  
+**完成日期**: ___  
+
+---
+
+### ✅ 任务 2.2.4: 编写入口点追踪测试
+- [ ] 创建 `tests/test_disassembly_tracker.cpp`
+  - [ ] 测试基本标记功能
+  - [ ] 测试冲突检测
+  - [ ] 测试边界情况
+- [ ] 创建 `tests/test_jump_target_discovery.cpp`
+  - [ ] 测试 JMP 发现新入口点
+  - [ ] 测试 CALL 发现新入口点
+  - [ ] 测试条件跳转发现新入口点
+
+**预计时间**: 2-3 小时  
+**负责人**: ___  
+**完成日期**: ___  
+
+---
+
+### 🎯 Phase 2.2 验收标准
+- [ ] `DisassemblyTracker` 所有单元测试通过
+- [ ] 能够正确标记入口点和跳转目标
+- [ ] 能够检测指令重叠冲突
+- [ ] 反汇编器不再重复处理同一地址
+- [ ] 性能开销可接受（< 5%）
+
+**Phase 2.2 完成日期**: ___  
+**代码审查人**: ___  
+**审查日期**: ___  
+
+---
+
+## 📋 Phase 2.3: 完整反汇编图（1-2 天）
+
+### 🎯 设计目标
+
+构建完整的控制流图（CFG），支持：
+- 基本块（Basic Block）划分
+- 控制流边（Control Flow Edges）
+- 递归反汇编所有可达代码
+- 为后续优化和分析提供基础
+
+---
+
+### ✅ 任务 2.3.1: 定义基本块结构
+- [ ] 创建 `include/vm/disassembly/ControlFlowGraph.h`
+  ```cpp
+  struct BasicBlock {
+      uint64_t start_addr;
+      uint64_t end_addr;
+      std::vector<std::shared_ptr<InstructionWithExecutor>> instructions;
+      std::vector<uint64_t> successors;  // 后继块地址
+      std::vector<uint64_t> predecessors;  // 前驱块地址
+      bool is_terminated;  // 是否以 JMP/RET/HLT 结束
+      bool is_entry_block;  // 是否是函数入口块
+  };
+  
+  class ControlFlowGraph {
+  private:
+      std::unordered_map<uint64_t, BasicBlock> blocks_;
+      std::set<uint64_t> pending_entries_;  // 待处理的入口点
+      
+  public:
+      void build(const uint8_t* code, uint64_t entry_addr, size_t code_size);
+      const BasicBlock* get_block(uint64_t addr) const;
+      const std::unordered_map<uint64_t, BasicBlock>& get_all_blocks() const;
+  };
+  ```
+
+**预计时间**: 2-3 小时  
+**负责人**: ___  
+**完成日期**: ___  
+
+---
+
+### ✅ 任务 2.3.2: 实现 CFG 构建算法
+- [ ] 实现 `build()` 方法
+  - [ ] 从入口点开始反汇编
+  - [ ] 遇到跳转指令时记录目标地址
+  - [ ] 遇到 RET/HLT 时终止当前块
+  - [ ] 递归处理所有待处理入口点
+  - [ ] 构建前驱/后继关系
+- [ ] 实现基本块划分逻辑
+- [ ] 处理间接跳转（TODO：暂时标记为未知目标）
+
+**预计时间**: 4-6 小时  
+**负责人**: ___  
+**完成日期**: ___  
+
+---
+
+### ✅ 任务 2.3.3: 集成到 VM 执行流程
+- [ ] 修改 `X86CPUVM`
+  - [ ] 添加 `ControlFlowGraph cfg_` 成员
+  - [ ] 在加载代码时构建 CFG
+  - [ ] 执行时从 CFG 获取指令
+- [ ] 优化指令获取：直接从基本块中获取，无需重复反汇编
+
+**预计时间**: 2-3 小时  
+**负责人**: ___  
+**完成日期**: ___  
+
+---
+
+### ✅ 任务 2.3.4: 编写 CFG 测试
+- [ ] 创建 `tests/test_control_flow_graph.cpp`
+  - [ ] 测试简单线性代码
+  - [ ] 测试带跳转的代码
+  - [ ] 测试带循环的代码
+  - [ ] 测试带函数调用的代码
+  - [ ] 验证基本块划分正确性
+  - [ ] 验证控制流边正确性
+
+**预计时间**: 3-4 小时  
+**负责人**: ___  
+**完成日期**: ___  
+
+---
+
+### 🎯 Phase 2.3 验收标准
+- [ ] 能够正确构建简单函数的 CFG
+- [ ] 基本块划分符合预期
+- [ ] 控制流边完整且正确
+- [ ] 支持循环和条件分支
+- [ ] 所有 CFG 测试通过
+- [ ] VM 执行性能提升（相比 Phase 2.1）
+
+**Phase 2.3 完成日期**: ___  
+**代码审查人**: ___  
+**审查日期**: ___  
+
+---
+
+### 🎯 Phase 2 总体验收标准
+- [ ] Phase 2.1: 基础执行器逻辑全部通过
+- [ ] Phase 2.2: 入口点追踪机制正常工作
+- [ ] Phase 2.3: 完整 CFG 构建成功
+- [ ] 所有现有测试程序通过
+- [ ] 性能优于或接近旧架构
+- [ ] 无内存泄漏
+
+**Phase 2 总体完成日期**: ___  
 **代码审查人**: ___  
 **审查日期**: ___  
 

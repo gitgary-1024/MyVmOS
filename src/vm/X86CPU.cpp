@@ -1,4 +1,5 @@
 #include "X86CPU.h"
+#include "disassembly/ControlFlowGraph.h"  // CFG 支持
 #include <iostream>
 #include <cstring>
 #include <iomanip>
@@ -15,6 +16,7 @@ X86CPUVM::X86CPUVM(uint64_t vm_id, const X86VMConfig& config)
     , interrupt_pending_(false)
     , total_instructions_(0)
     , total_cycles_(0)
+    , cfg_(nullptr)  // 初始化 CFG 指针
 {
     // 初始化寄存器
     std::fill(registers_.begin(), registers_.end(), 0);
@@ -30,6 +32,12 @@ X86CPUVM::X86CPUVM(uint64_t vm_id, const X86VMConfig& config)
 
 X86CPUVM::~X86CPUVM() {
     stop();
+    
+    // 清理 CFG
+    if (cfg_) {
+        delete static_cast<disassembly::ControlFlowGraph*>(cfg_);
+        cfg_ = nullptr;
+    }
 }
 
 // ===== 核心控制 =====
@@ -39,7 +47,7 @@ void X86CPUVM::start() {
     state_ = X86VMState::RUNNING;
     running_ = true;
     
-    std::cout << "[X86VM-" << vm_id_ << "] Started at RIP=0x" 
+    std::cout << "[X86VM-" << get_vm_id() << "] Started at RIP=0x" 
               << std::hex << get_rip() << std::dec << std::endl;
 }
 
@@ -47,7 +55,7 @@ void X86CPUVM::stop() {
     running_ = false;
     state_ = X86VMState::TERMINATED;
     
-    std::cout << "[X86VM-" << vm_id_ << "] Stopped. Total instructions: " 
+    std::cout << "[X86VM-" << get_vm_id() << "] Stopped. Total instructions: " 
               << total_instructions_ << std::endl;
 }
 
@@ -130,7 +138,7 @@ void X86CPUVM::set_register(X86Reg reg, uint64_t value) {
 // ===== 内存访问 =====
 uint8_t X86CPUVM::read_byte(uint64_t addr) const {
     if (addr >= physical_memory_.size()) {
-        std::cerr << "[X86VM-" << vm_id_ << "] Memory read out of bounds: 0x" 
+        std::cerr << "[X86VM-" << get_vm_id() << "] Memory read out of bounds: 0x" 
                   << std::hex << addr << std::dec << std::endl;
         return 0;
     }
@@ -151,7 +159,7 @@ uint64_t X86CPUVM::read_qword(uint64_t addr) const {
 
 void X86CPUVM::write_byte(uint64_t addr, uint8_t value) {
     if (addr >= physical_memory_.size()) {
-        std::cerr << "[X86VM-" << vm_id_ << "] Memory write out of bounds: 0x" 
+        std::cerr << "[X86VM-" << get_vm_id() << "] Memory write out of bounds: 0x" 
                   << std::hex << addr << std::dec << std::endl;
         return;
     }
@@ -173,13 +181,13 @@ void X86CPUVM::write_qword(uint64_t addr, uint64_t value) {
 // ===== 程序加载 =====
 void X86CPUVM::load_binary(const std::vector<uint8_t>& binary, uint64_t load_addr) {
     if (load_addr + binary.size() > physical_memory_.size()) {
-        std::cerr << "[X86VM-" << vm_id_ << "] Binary too large for memory!" << std::endl;
+        std::cerr << "[X86VM-" << get_vm_id() << "] Binary too large for memory!" << std::endl;
         return;
     }
     
     std::memcpy(&physical_memory_[load_addr], binary.data(), binary.size());
     
-    std::cout << "[X86VM-" << vm_id_ << "] Loaded " << binary.size() 
+    std::cout << "[X86VM-" << get_vm_id() << "] Loaded " << binary.size() 
               << " bytes at 0x" << std::hex << load_addr << std::dec << std::endl;
 }
 
@@ -235,12 +243,12 @@ void X86CPUVM::trigger_syscall(uint64_t syscall_num) {
     
     // 3. 构造系统调用消息
     Message msg;
-    msg.sender_id = vm_id_;
+    msg.sender_id = get_vm_id();
     msg.receiver_id = MODULE_ROUTER_CORE;  // 发送给路由核心
     msg.type = MessageType::SYSCALL;
     
     SyscallRequest req;
-    req.vm_id = vm_id_;
+    req.vm_id = get_vm_id();
     req.syscall_number = syscall_num;
     
     // 新增：从 x86-64 系统调用约定寄存器获取参数
@@ -253,7 +261,7 @@ void X86CPUVM::trigger_syscall(uint64_t syscall_num) {
     msg.set_payload(req);
     
     // 4. 打印日志（后续会通过 VmManager 发送到路由树）
-    std::cout << "[X86VM-" << vm_id_ << "] SYSCALL #" << syscall_num 
+    std::cout << "[X86VM-" << get_vm_id() << "] SYSCALL #" << syscall_num 
               << "(arg1=" << req.arg1 << ", arg2=" << req.arg2 
               << ", arg3=" << req.arg3 << ", arg4=" << req.arg4 
               << ") - Sending to router tree" << std::endl;
@@ -268,7 +276,7 @@ void X86CPUVM::trigger_syscall(uint64_t syscall_num) {
         set_rip(syscall_handler);
     } else {
         // 如果没有设置处理程序，直接返回到用户空间
-        std::cout << "[X86VM-" << vm_id_ << "] No syscall handler, returning" << std::endl;
+        std::cout << "[X86VM-" << get_vm_id() << "] No syscall handler, returning" << std::endl;
         set_rip(ret_rip);
     }
     
@@ -334,7 +342,7 @@ uint64_t X86CPUVM::pop() {
 
 // ===== 调试接口 =====
 void X86CPUVM::dump_registers() const {
-    std::cout << "\n===== X86VM-" << vm_id_ << " Register State =====" << std::endl;
+    std::cout << "\n===== X86VM-" << get_vm_id() << " Register State =====" << std::endl;
     std::cout << std::hex << std::showbase;
     
     std::cout << "RAX: " << std::setw(16) << get_register(X86Reg::RAX) << "  ";
@@ -384,4 +392,33 @@ void X86CPUVM::disassemble_current() const {
     // TODO: 实现完整的反汇编
     // 目前只打印当前地址
     std::cout << "[0x" << std::hex << get_rip() << std::dec << "] Executing..." << std::endl;
+}
+
+// ===== CFG 分析接口实现 =====
+
+void X86CPUVM::build_cfg(uint64_t entry_addr) {
+    // 删除旧的 CFG（如果存在）
+    if (cfg_) {
+        delete static_cast<disassembly::ControlFlowGraph*>(cfg_);
+        cfg_ = nullptr;
+    }
+    
+    // 创建新的 CFG 对象
+    auto* new_cfg = new disassembly::ControlFlowGraph(
+        physical_memory_.data(),
+        physical_memory_.size()
+    );
+    
+    // 构建 CFG
+    new_cfg->build(entry_addr);
+    
+    // 保存指针
+    cfg_ = new_cfg;
+    
+    // 输出统计信息
+    auto stats = new_cfg->get_stats();
+    std::cout << "[X86VM-" << get_vm_id() << "] CFG built successfully:" << std::endl;
+    std::cout << "  - Total blocks: " << stats.total_blocks << std::endl;
+    std::cout << "  - Total edges: " << stats.total_edges << std::endl;
+    std::cout << "  - Entry points: " << stats.entry_points.size() << std::endl;
 }

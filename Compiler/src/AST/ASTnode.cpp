@@ -138,12 +138,16 @@ ForStatement::~ForStatement() {
     delete body;
 }
 
-// SyscallStatement 实现
-SyscallStatement::SyscallStatement(Expression* num)
-    : syscallNumber(num) {
+// SyscallStatement 实现（支持多参数）
+SyscallStatement::SyscallStatement(Expression* num, const std::vector<Expression*>& args)
+    : syscallNumber(num), arguments(args) {
     nodeType = SYSCALL_STATEMENT;
 }
 
 SyscallStatement::~SyscallStatement() {
     delete syscallNumber;
+    // 释放所有参数表达式
+    for (auto arg : arguments) {
+        delete arg;
+    }
 }

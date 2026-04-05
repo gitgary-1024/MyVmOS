@@ -7,6 +7,19 @@ int X86CPUVM::execute_mov(uint64_t rip) {
     int instr_len = 1;
     
     switch (opcode) {
+        // MOV r8, imm8 (操作码 0xB0-0xB7)
+        case 0xB0: case 0xB1: case 0xB2: case 0xB3:
+        case 0xB4: case 0xB5: case 0xB6: case 0xB7: {
+            X86Reg reg = static_cast<X86Reg>((opcode - 0xB0));
+            uint8_t imm_val = read_byte(rip + 1);
+            // 只设置寄存器的低 8 位
+            uint64_t old_val = get_register(reg);
+            uint64_t new_val = (old_val & ~0xFFULL) | imm_val;
+            set_register(reg, new_val);
+            instr_len = 1;
+            break;
+        }
+        
         // MOV r64, imm64 (操作码 0xB8-0xBF)
         case 0xB8: case 0xB9: case 0xBA: case 0xBB:
         case 0xBC: case 0xBD: case 0xBE: case 0xBF: {
@@ -117,6 +130,36 @@ int X86CPUVM::execute_arithmetic(uint64_t rip) {
     int instr_len = 1;
     
     switch (opcode) {
+        // ===== ADD 指令族 =====
+        case 0x00: {  // ADD r/m8, r8 (8 位加法)
+            ModRMDecoding decoding = decode_modrm(rip + 1, instr_len);
+            
+            uint8_t dest_val, src_val;
+            
+            if (!decoding.is_memory_operand) {
+                // 寄存器到寄存器（8 位）
+                dest_val = static_cast<uint8_t>(get_register(static_cast<X86Reg>(decoding.rm)));
+                src_val = static_cast<uint8_t>(get_register(static_cast<X86Reg>(decoding.reg)));
+                
+                uint8_t result = dest_val + src_val;
+                // 更新低 8 位
+                uint64_t reg_val = get_register(static_cast<X86Reg>(decoding.rm));
+                reg_val = (reg_val & ~0xFFULL) | result;
+                set_register(static_cast<X86Reg>(decoding.rm), reg_val);
+                update_flags_arithmetic(result, dest_val, src_val, true);
+            } else {
+                // 内存操作（8 位）
+                uint64_t addr = calculate_effective_address(decoding, rip + 1);
+                dest_val = read_byte(addr);
+                src_val = static_cast<uint8_t>(get_register(static_cast<X86Reg>(decoding.reg)));
+                
+                uint8_t result = dest_val + src_val;
+                write_byte(addr, result);
+                update_flags_arithmetic(result, dest_val, src_val, true);
+            }
+            break;
+        }
+        
         case 0x01: {  // ADD r/m64, r64
             ModRMDecoding decoding = decode_modrm(rip + 1, instr_len);
             
@@ -141,6 +184,28 @@ int X86CPUVM::execute_arithmetic(uint64_t rip) {
             break;
         }
         
+        case 0x02: {  // ADD r8, r/m8 (8 位加法)
+            ModRMDecoding decoding = decode_modrm(rip + 1, instr_len);
+            
+            uint8_t dest_val = static_cast<uint8_t>(get_register(static_cast<X86Reg>(decoding.reg)));
+            uint8_t src_val;
+            
+            if (!decoding.is_memory_operand) {
+                src_val = static_cast<uint8_t>(get_register(static_cast<X86Reg>(decoding.rm)));
+            } else {
+                uint64_t addr = calculate_effective_address(decoding, rip + 1);
+                src_val = read_byte(addr);
+            }
+            
+            uint8_t result = dest_val + src_val;
+            // 更新低 8 位
+            uint64_t reg_val = get_register(static_cast<X86Reg>(decoding.reg));
+            reg_val = (reg_val & ~0xFFULL) | result;
+            set_register(static_cast<X86Reg>(decoding.reg), reg_val);
+            update_flags_arithmetic(result, dest_val, src_val, true);
+            break;
+        }
+        
         case 0x03: {  // ADD r64, r/m64
             ModRMDecoding decoding = decode_modrm(rip + 1, instr_len);
             
@@ -157,6 +222,33 @@ int X86CPUVM::execute_arithmetic(uint64_t rip) {
             uint64_t result = dest_val + src_val;
             set_register(static_cast<X86Reg>(decoding.reg), result);
             update_flags_arithmetic(result, dest_val, src_val, true);
+            break;
+        }
+        
+        // ===== SUB 指令族 =====
+        case 0x28: {  // SUB r/m8, r8 (8 位减法)
+            ModRMDecoding decoding = decode_modrm(rip + 1, instr_len);
+            
+            uint8_t dest_val, src_val;
+            
+            if (!decoding.is_memory_operand) {
+                dest_val = static_cast<uint8_t>(get_register(static_cast<X86Reg>(decoding.rm)));
+                src_val = static_cast<uint8_t>(get_register(static_cast<X86Reg>(decoding.reg)));
+                
+                uint8_t result = dest_val - src_val;
+                uint64_t reg_val = get_register(static_cast<X86Reg>(decoding.rm));
+                reg_val = (reg_val & ~0xFFULL) | result;
+                set_register(static_cast<X86Reg>(decoding.rm), reg_val);
+                update_flags_arithmetic(result, dest_val, src_val, true);
+            } else {
+                uint64_t addr = calculate_effective_address(decoding, rip + 1);
+                dest_val = read_byte(addr);
+                src_val = static_cast<uint8_t>(get_register(static_cast<X86Reg>(decoding.reg)));
+                
+                uint8_t result = dest_val - src_val;
+                write_byte(addr, result);
+                update_flags_arithmetic(result, dest_val, src_val, true);
+            }
             break;
         }
         
@@ -182,6 +274,46 @@ int X86CPUVM::execute_arithmetic(uint64_t rip) {
                 write_qword(calculate_effective_address(decoding, rip + 1), result);
             }
             
+            update_flags_arithmetic(result, dest_val, src_val, true);
+            break;
+        }
+        
+        case 0x2A: {  // SUB r8, r/m8 (8 位减法)
+            ModRMDecoding decoding = decode_modrm(rip + 1, instr_len);
+            
+            uint8_t dest_val = static_cast<uint8_t>(get_register(static_cast<X86Reg>(decoding.reg)));
+            uint8_t src_val;
+            
+            if (!decoding.is_memory_operand) {
+                src_val = static_cast<uint8_t>(get_register(static_cast<X86Reg>(decoding.rm)));
+            } else {
+                uint64_t addr = calculate_effective_address(decoding, rip + 1);
+                src_val = read_byte(addr);
+            }
+            
+            uint8_t result = dest_val - src_val;
+            uint64_t reg_val = get_register(static_cast<X86Reg>(decoding.reg));
+            reg_val = (reg_val & ~0xFFULL) | result;
+            set_register(static_cast<X86Reg>(decoding.reg), reg_val);
+            update_flags_arithmetic(result, dest_val, src_val, true);
+            break;
+        }
+        
+        case 0x2B: {  // SUB r64, r/m64
+            ModRMDecoding decoding = decode_modrm(rip + 1, instr_len);
+            
+            uint64_t dest_val = get_register(static_cast<X86Reg>(decoding.reg));
+            uint64_t src_val;
+            
+            if (!decoding.is_memory_operand) {
+                src_val = get_register(static_cast<X86Reg>(decoding.rm));
+            } else {
+                uint64_t addr = calculate_effective_address(decoding, rip + 1);
+                src_val = read_qword(addr);
+            }
+            
+            uint64_t result = dest_val - src_val;
+            set_register(static_cast<X86Reg>(decoding.reg), result);
             update_flags_arithmetic(result, dest_val, src_val, true);
             break;
         }

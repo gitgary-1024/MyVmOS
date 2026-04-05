@@ -147,12 +147,13 @@ public:
     ~ForStatement();
 };
 
-// 新增：系统调用语句节点
+// 新增：系统调用语句节点（支持多参数）
 class SyscallStatement : public ASTBaseNode {
 public:
     Expression* syscallNumber; // 系统调用号
+    std::vector<Expression*> arguments; // 参数列表
     
-    SyscallStatement(Expression* num);
+    SyscallStatement(Expression* num, const std::vector<Expression*>& args = {});
     ~SyscallStatement();
 };
 

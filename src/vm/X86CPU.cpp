@@ -193,6 +193,9 @@ void X86CPUVM::load_elf(const std::vector<uint8_t>& elf_binary) {
 void X86CPUVM::handle_interrupt(const InterruptResult& result) {
     // 从中断返回
     if (result.return_value >= 0) {
+        // ✅ 新增：设置 syscall 返回值到 RAX
+        set_register(X86Reg::RAX, static_cast<uint64_t>(result.return_value));
+        
         // 恢复现场（简化版本）
         uint64_t ret_rip = pop();
         uint64_t ret_rflags = pop();
@@ -239,12 +242,21 @@ void X86CPUVM::trigger_syscall(uint64_t syscall_num) {
     SyscallRequest req;
     req.vm_id = vm_id_;
     req.syscall_number = syscall_num;
-    // 可以从其他寄存器获取参数，如 RDI, RSI, RDX, RCX 等
+    
+    // 新增：从 x86-64 系统调用约定寄存器获取参数
+    // 参数传递顺序：RDI, RSI, RDX, R10, R8, R9
+    req.arg1 = get_register(X86Reg::RDI);  // 参数 1
+    req.arg2 = get_register(X86Reg::RSI);  // 参数 2
+    req.arg3 = get_register(X86Reg::RDX);  // 参数 3
+    req.arg4 = get_register(X86Reg::R10);  // 参数 4
+    
     msg.set_payload(req);
     
     // 4. 打印日志（后续会通过 VmManager 发送到路由树）
     std::cout << "[X86VM-" << vm_id_ << "] SYSCALL #" << syscall_num 
-              << " - Sending to router tree" << std::endl;
+              << "(arg1=" << req.arg1 << ", arg2=" << req.arg2 
+              << ", arg3=" << req.arg3 << ", arg4=" << req.arg4 
+              << ") - Sending to router tree" << std::endl;
     
     // 5. 更新状态
     state_ = X86VMState::WAITING_INTERRUPT;

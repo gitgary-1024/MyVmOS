@@ -63,7 +63,7 @@ int main() {
     auto& router = RouterCore::instance();
     router.register_module(MODULE_VM_MGR, "VMManager");
     router.register_module(MODULE_PERIPH_MGR, "PeriphManager");
-    router.start();
+    // router.start();
 
     // 2. 订阅消息
     route_subscribe(MessageType::INTERRUPT_RESULT_READY, vm_mgr_handler);
@@ -80,25 +80,25 @@ int main() {
 
     // 4. 发送测试消息（混合同步/异步，验证优先级）
     // 先发一个异步中断（低优）
-    Message async_msg(MODULE_VM_MGR, MODULE_PERIPH_MGR, MessageType::INTERRUPT_ASYNC_ENQUEUE);
-    InterruptRequest async_req{1001, 2, MessageType::INTERRUPT_ASYNC_ENQUEUE, 1000};
-    async_msg.set_payload(async_req);
-    route_send(async_msg);
-    log("[TEST] Sent async interrupt");
+    // Message async_msg(MODULE_VM_MGR, MODULE_PERIPH_MGR, MessageType::INTERRUPT_ASYNC_ENQUEUE);
+    // InterruptRequest async_req(1001, 2, InterruptType::ASYNC_ENQUEUE, 1000);
+    // async_msg.set_payload(async_req);
+    // route_send(async_msg);
+    // log("[TEST] Sent async interrupt");
 
-    // 再发一个同步中断（高优）—— 应该先被处理
-    Message sync_msg(MODULE_VM_MGR, MODULE_PERIPH_MGR, MessageType::INTERRUPT_SYNC_BEGIN);
-    InterruptRequest sync_req{1002, 2, MessageType::INTERRUPT_SYNC_BEGIN, 2000};
-    sync_msg.set_payload(sync_req);
-    route_send(sync_msg);
-    log("[TEST] Sent sync interrupt");
+    // // 再发一个同步中断（高优）—— 应该先被处理
+    // Message sync_msg(MODULE_VM_MGR, MODULE_PERIPH_MGR, MessageType::INTERRUPT_SYNC_BEGIN);
+    // InterruptRequest sync_req(1002, 2, InterruptType::SYNC_BEGIN, 2000);
+    // sync_msg.set_payload(sync_req);
+    // route_send(sync_msg);
+    // log("[TEST] Sent sync interrupt");
 
-    // 发送 GIL 请求（次高优）
-    Message lock_req(MODULE_VM_MGR, MODULE_PERIPH_MGR, MessageType::PERIPH_LOCK_REQUEST);
-    PeriphLockRequest plr{1003, 2, 1, 500};
-    lock_req.set_payload(plr);
-    route_send(lock_req);
-    log("[TEST] Sent GIL lock request");
+    // // 发送 GIL 请求（次高优）
+    // Message lock_req(MODULE_VM_MGR, MODULE_PERIPH_MGR, MessageType::PERIPH_LOCK_REQUEST);
+    // PeriphLockRequest plr(1003, 2, 1, 500);
+    // lock_req.set_payload(plr);
+    // route_send(lock_req);
+    // log("[TEST] Sent GIL lock request");
 
     // 等待处理完成
     std::this_thread::sleep_for(std::chrono::milliseconds(200));

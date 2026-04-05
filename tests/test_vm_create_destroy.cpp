@@ -27,7 +27,7 @@ void test_create_destroy_x86_vm() {
     // 2. 查询 VM
     auto vm = vmMgr.get_vm(static_cast<uint64_t>(vmId));
     assert(vm != nullptr);
-    std::cout << "VM found, type: " << typeid(*vm).name() << "\n";
+    // std::cout << "VM found, type: " << typeid(*vm).name() << "\n";
     
     // 3. 销毁 VM
     std::cout << "Destroying VM " << vmId << "...\n";

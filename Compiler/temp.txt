@@ -1,0 +1,6 @@
+
+int main ( ) {
+    syscall ( 1 ) ;
+    syscall ( 2 ) ;
+    return 0 ;
+}

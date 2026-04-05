@@ -111,7 +111,7 @@ int X86CPUVM::decode_and_execute() {
         case 0xBC: case 0xBD: case 0xBE: case 0xBF:  // MOV r64, imm64
         case 0xC6:  // MOV r/m8, imm8
         case 0xC7:  // MOV r/m64, imm64
-            return execute_mov(rip);
+            return prefix_bytes + execute_mov(rip);  // ✅ 加上前缀字节数
         
         // ===== PUSH/POP =====
         case 0x50: case 0x51: case 0x52: case 0x53:  // PUSH RAX-RCX-RDX-RBX
@@ -121,12 +121,12 @@ int X86CPUVM::decode_and_execute() {
         case 0x68:  // PUSH imm32
         case 0x6A:  // PUSH imm8
         case 0x69:  // POP imm32
-            return execute_push_pop(rip);
+            return prefix_bytes + execute_push_pop(rip);  // ✅ 加上前缀字节数
         
         // ===== 算术运算 =====
         case 0x00: case 0x01: case 0x02: case 0x03:  // ADD
         case 0x28: case 0x29: case 0x2A: case 0x2B:  // SUB
-            return execute_arithmetic(rip);
+            return prefix_bytes + execute_arithmetic(rip);  // ✅ 加上前缀字节数
         
         // ===== 逻辑运算 =====
         case 0xA8: case 0xA9:  // TEST
@@ -134,7 +134,7 @@ int X86CPUVM::decode_and_execute() {
         case 0x20: case 0x21:  // AND
         case 0x30: case 0x31:  // XOR
         case 0xF6: case 0xF7:  // NOT/NEG
-            return execute_logical(rip);
+            return prefix_bytes + execute_logical(rip);  // ✅ 加上前缀字节数
         
         // ===== 跳转指令 =====
         case 0xEB:  // JMP rel8
@@ -144,34 +144,34 @@ int X86CPUVM::decode_and_execute() {
         case 0x78: case 0x79: case 0x7A: case 0x7B:  // JS/JNS/JP/JNP
         case 0x7C: case 0x7D: case 0x7E: case 0x7F:  // JL/JGE/JLE/JG
         case 0xE3:  // JCXZ/JECXZ/JRCXZ
-            return execute_branch(rip);
+            return prefix_bytes + execute_branch(rip);  // ✅ 加上前缀字节数
         
         // ===== CALL/RET =====
         case 0xE8:  // CALL rel32
         case 0xFF:  // CALL/RET (需要 ModR/M 解码)
-            return execute_call_ret(rip);
+            return prefix_bytes + execute_call_ret(rip);  // ✅ 加上前缀字节数
         
         // ===== 栈操作 =====
         case 0x9D:  // POPF
         case 0x9C:  // PUSHF
-            return execute_stack_ops(rip);
+            return prefix_bytes + execute_stack_ops(rip);  // ✅ 加上前缀字节数
         
         // ===== 标志位操作 =====
         case 0xF5:  // CMC
         case 0xF8:  // CLC
         case 0xF9:  // STC
-            return execute_flag_ops(rip);
+            return prefix_bytes + execute_flag_ops(rip);  // ✅ 加上前缀字节数
         
         // ===== 中断指令 =====
         case 0xCC:  // INT 3 (断点)
         case 0xCD:  // INT imm8
-            return execute_interrupt(rip);
+            return prefix_bytes + execute_interrupt(rip);  // ✅ 加上前缀字节数
         
         // ===== 字符串操作 =====
         case 0xA4:  // MOVS
         case 0xAA:  // STOS
         case 0xAB:  // STOS
-            return execute_string_ops(rip);
+            return prefix_bytes + execute_string_ops(rip);  // ✅ 加上前缀字节数
         
         // ===== NOP =====
         case 0x90:  // NOP

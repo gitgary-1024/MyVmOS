@@ -7,6 +7,25 @@
 // 初始化物理寄存器列表
 const std::vector<std::string> ALL_PHYSICAL_REGS = {"eax", "ebx", "ecx", "edx"};
 
+// ✅ 新增：X86Reg 枚举到字符串的转换函数
+std::string getRegisterName(X86Reg reg) {
+    switch (reg) {
+        case X86Reg::RAX: return "rax";
+        case X86Reg::RBX: return "rbx";
+        case X86Reg::RCX: return "rcx";
+        case X86Reg::RDX: return "rdx";
+        case X86Reg::RSI: return "rsi";
+        case X86Reg::RDI: return "rdi";
+        case X86Reg::RBP: return "rbp";
+        case X86Reg::RSP: return "rsp";
+        case X86Reg::R8: return "r8";
+        case X86Reg::R9: return "r9";
+        case X86Reg::R10: return "r10";
+        case X86Reg::R11: return "r11";
+        default: return "unknown";
+    }
+}
+
 std::string IR::newVReg() {
     return "vreg" + std::to_string(vregCounter++);
 }
@@ -297,9 +316,24 @@ void IR::generate(ASTBaseNode* node) {
         
         case ASTBaseNode::SYSCALL_STATEMENT: {
             auto* syscallStmt = dynamic_cast<SyscallStatement*>(node);
+                    
+            // ✅ 新增：按照 x86-64 系统调用约定传递参数
+            // 参数顺序：RDI(参数 1), RSI(参数 2), RDX(参数 3), R10(参数 4), R8, R9
+            const std::vector<X86Reg> paramRegs = {
+                X86Reg::RDI, X86Reg::RSI, X86Reg::RDX, X86Reg::R10
+            };
+                    
+            // 生成并传递每个参数到对应寄存器
+            for (size_t i = 0; i < syscallStmt->arguments.size() && i < paramRegs.size(); ++i) {
+                std::string argVReg = generateExpression(syscallStmt->arguments[i]);
+                std::string regName = getRegisterName(paramRegs[i]);
+                irNodes.push_back({IROp::MOV, {regName, argVReg}, 
+                                  "Move syscall arg " + std::to_string(i+1) + " to " + regName});
+            }
+                    
             // 生成系统调用号表达式，结果在虚拟寄存器中
             std::string syscallNumVReg = generateExpression(syscallStmt->syscallNumber);
-            // 将系统调用号移动到 EAX（x86  syscall 约定）
+            // 将系统调用号移动到 EAX（x86 syscall 约定）
             irNodes.push_back({IROp::MOV, {"eax", syscallNumVReg}, "Move syscall num to EAX"});
             // 生成 syscall 指令
             irNodes.push_back({IROp::SYSCALL, {}, "Syscall instruction"});

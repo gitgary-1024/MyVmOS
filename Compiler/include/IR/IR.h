@@ -7,6 +7,12 @@
 #include <vector>
 #include <string>
 
+// 包含 X86Reg 枚举定义（用于 syscall 参数传递）
+#include "../../include/vm/X86CPU.h"
+
+// X86Reg 到字符串的转换函数声明
+std::string getRegisterName(X86Reg reg);
+
 class IR {
 private:
     ASTBaseNode* ASTroot;

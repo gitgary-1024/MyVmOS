@@ -31,12 +31,12 @@ int main() {
     vm.start();
     
     // 手动执行指令直到 HLT
-    int max_cycles = 100;
-    while (max_cycles-- > 0) {
-        vm.execute_instruction();
-        if (vm.get_state() == X86VMState::HALTED || vm.get_state() == X86VMState::TERMINATED)
-            break;
-    }
+    // int max_cycles = 100;
+    // while (max_cycles-- > 0) {
+    //     vm.execute_instruction();
+    //     if (vm.get_state() == X86VMState::HALTED || vm.get_state() == X86VMState::TERMINATED)
+    //         break;
+    // }
     
     cout << "\n最终状态:" << endl;
     vm.dump_registers();

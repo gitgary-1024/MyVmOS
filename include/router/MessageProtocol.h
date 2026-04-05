@@ -49,7 +49,14 @@ enum class MessageType {
     SYSTEM_SHUTDOWN_ACK,
         
     // --- 系统调用 ---
-    SYSCALL  // 系统调用请求（从 VM 发起到内核/外设）
+    SYSCALL,  // 系统调用请求（从 VM 发起到内核/外设）
+    
+    // --- 终端管理 ---
+    TERMINAL_CREATE_REQUEST,    // 创建终端
+    TERMINAL_CREATE_RESPONSE,   // 终端创建响应
+    TERMINAL_INPUT_NOTIFY,      // 终端输入就绪通知
+    TERMINAL_OUTPUT_REQUEST,    // 终端输出请求
+    TERMINAL_RELEASE            // 释放终端
 };
 
 // ===== 2. 消息ID生成规则 =====
@@ -141,6 +148,9 @@ struct InterruptRequest {
                          interrupt_type(InterruptType::SYSTEM),
                          priority(InterruptPriority::NORMAL) {}
     
+    InterruptRequest(uint64_t v, int p, InterruptType t, InterruptPriority pri = InterruptPriority::NORMAL) 
+        : vm_id(v), periph_id(p), interrupt_type(t), priority(pri) {}
+
     // 自动根据中断类型设置优先级
     void set_interrupt_type(InterruptType type) {
         interrupt_type = type;
@@ -198,6 +208,32 @@ struct SyscallRequest {
     uint64_t arg4 = 0;        // 参数 4
 };
 
+// ===== 终端管理相关 =====
+struct TerminalCreateRequest {
+    uint64_t vm_id;
+};
+
+struct TerminalCreateResponse {
+    uint64_t vm_id;
+    int terminal_id;
+    int error_code = 0;  // 0 表示成功
+};
+
+struct TerminalInputNotify {
+    int terminal_id;
+    std::string data;  // 输入数据
+};
+
+struct TerminalOutputRequest {
+    int terminal_id;
+    std::string data;  // 输出数据
+};
+
+struct TerminalRelease {
+    int terminal_id;
+    uint64_t vm_id;
+};
+
 // ===== 4. 通用消息结构体 =====
 struct Message {
     uint64_t sender_id = 0;
@@ -216,7 +252,12 @@ struct Message {
         PeriphLockGranted,
         SchedulerTaskEnqueue,
         VMWakeUpNotify,               // ✅ 新增到 variant 列表
-        SyscallRequest                // 系统调用请求
+        SyscallRequest,               // 系统调用请求
+        TerminalCreateRequest,        // 终端创建请求
+        TerminalCreateResponse,       // 终端创建响应
+        TerminalInputNotify,          // 终端输入通知
+        TerminalOutputRequest,        // 终端输出请求
+        TerminalRelease               // 终端释放
     > payload;
 
     // 默认构造函数

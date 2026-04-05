@@ -307,7 +307,7 @@ ASTBaseNode* AST::parseFunctionDeclaration() {
     return func;
 }
 
-// 解析 syscall 语句（新增）
+// 解析 syscall 语句（新增，支持多参数）
 ASTBaseNode* AST::parseSyscallStatement() {
     consume(); // 消耗 syscall 关键字
     expect("("); // 消耗左括号
@@ -320,11 +320,25 @@ ASTBaseNode* AST::parseSyscallStatement() {
         throw std::runtime_error("Invalid syscall number expression");
     }
     
-    expect(")"); // 消耗右括号
+    // ✅ 新增：解析可选的参数列表
+    std::vector<Expression*> arguments;
+    if (!match(")")) {  // 如果不是空参数列表
+        do {
+            ASTBaseNode* argExpr = parseLogicalOr();
+            Expression* arg = dynamic_cast<Expression*>(argExpr);
+            if (!arg) {
+                throw std::runtime_error("Invalid syscall argument expression");
+            }
+            arguments.push_back(arg);
+        } while (match(","));  // 支持逗号分隔的多个参数
+        
+        expect(")"); // 消耗右括号
+    }
+    
     expect(";"); // 消耗分号
     
-    // 创建 syscall 语句节点
-    return new SyscallStatement(syscallExpr);
+    // 创建 syscall 语句节点（带参数）
+    return new SyscallStatement(syscallExpr, arguments);
 }
 
 // 解析函数调用

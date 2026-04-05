@@ -2,6 +2,7 @@
 #define LIVS_VM_DISASSEMBLY_X86_INSTRUCTION_H
 
 #include "../IR.h"
+#include "../InstructionWithExecutor.h"  // 引入带执行器的指令类
 #include <cstdint>
 #include <string>
 
@@ -104,8 +105,8 @@ struct X86InstructionData {
 // ===== x86 指令类别映射 =====
 InstructionCategory map_x86_category(unsigned int cs_insn_id);
 
-// ===== 从 Capstone 指令创建通用 IR =====
-std::shared_ptr<Instruction> create_instruction_from_capstone(
+// ===== 从 Capstone 指令创建通用 IR（带执行器）=====
+std::shared_ptr<InstructionWithExecutor> create_instruction_from_capstone(
     const void* cs_insn,     // Capstone cs_insn* 指针
     uint64_t address,
     void* capstone_handle    // Capstone csh 句柄（用于 cs_reg_name）

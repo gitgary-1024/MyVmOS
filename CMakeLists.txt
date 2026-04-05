@@ -94,6 +94,10 @@ target_link_libraries(test_new_disassembly myos_lib ${CAPSTONE_LIB_DIR}/libcapst
 add_executable(test_ir_executor tests/test_ir_executor.cpp)
 target_link_libraries(test_ir_executor myos_lib ${CAPSTONE_LIB_DIR}/libcapstone.a)
 
+# 反汇编集成测试
+add_executable(test_disassembly_integration tests/test_disassembly_integration.cpp)
+target_link_libraries(test_disassembly_integration myos_lib ${CAPSTONE_LIB_DIR}/libcapstone.a)
+
 # ==================== 测试程序 ====================
 
 # TimeoutManager 测试

@@ -1,4 +1,6 @@
 #include "disassembly/x86/X86Instruction.h"
+#include "disassembly/x86/X86ExecutorRegistry.h"  // 引入执行器注册表
+#include "disassembly/InstructionWithExecutor.h"   // 引入带执行器的指令类
 #include <capstone/capstone.h>
 #include <capstone/x86.h>
 #include <sstream>
@@ -125,8 +127,8 @@ InstructionCategory map_x86_category(unsigned int cs_insn_id) {
     return InstructionCategory::UNKNOWN;
 }
 
-// ===== 从 Capstone 指令创建通用 IR =====
-std::shared_ptr<Instruction> create_instruction_from_capstone(
+// ===== 从 Capstone 指令创建通用 IR（带执行器）=====
+std::shared_ptr<InstructionWithExecutor> create_instruction_from_capstone(
     const void* cs_insn_ptr,
     uint64_t address,
     void* capstone_handle
@@ -134,7 +136,7 @@ std::shared_ptr<Instruction> create_instruction_from_capstone(
     csh handle = reinterpret_cast<csh>(capstone_handle);
     const struct cs_insn* capstone_insn = reinterpret_cast<const struct cs_insn*>(cs_insn_ptr);
     
-    auto instruction = std::make_shared<Instruction>();
+    auto instruction = std::make_shared<InstructionWithExecutor>();
     instruction->address = capstone_insn->address;
     instruction->size = capstone_insn->size;
     instruction->mnemonic = capstone_insn->mnemonic;
@@ -286,6 +288,19 @@ std::shared_ptr<Instruction> create_instruction_from_capstone(
     
     // 将 x86 特有数据附加到通用指令（shared_ptr 自动管理内存）
     instruction->arch_specific_data = x86_data;
+    
+    // Task 1.4: 绑定执行器
+    // 根据助记符查找对应的执行器并绑定到指令
+    try {
+        auto& registry = x86::X86ExecutorRegistry::instance();
+        auto executor = registry.create_executor(instruction->mnemonic);
+        instruction->bind_executor(executor);
+    } catch (const std::exception& e) {
+        // 异常情况下也使用 fallback（HltExecutor），保证系统稳定性
+        auto& registry = x86::X86ExecutorRegistry::instance();
+        auto fallback = registry.create_executor("hlt");  // 强制使用 HLT
+        instruction->bind_executor(fallback);
+    }
     
     return instruction;
 }

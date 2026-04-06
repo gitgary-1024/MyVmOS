@@ -25,7 +25,7 @@ int X86CPUVM::execute_logical(uint64_t rip) {
                 uint64_t dest_val;
                 
                 if (!decoding.is_memory_operand) {
-                    dest_val = get_register(static_cast<X86Reg>(decoding.rm));
+                    dest_val = get_register(x86_reg_encoding_to_enum(decoding.rm));
                 } else {
                     uint64_t addr = calculate_effective_address(decoding, rip + 2);
                     dest_val = read_qword(addr);
@@ -36,8 +36,8 @@ int X86CPUVM::execute_logical(uint64_t rip) {
                 return 2 + len + 8;
             } else if (reg_field == 0x2) {  // NOT
                 if (!decoding.is_memory_operand) {
-                    uint64_t val = ~get_register(static_cast<X86Reg>(decoding.rm));
-                    set_register(static_cast<X86Reg>(decoding.rm), val);
+                    uint64_t val = ~get_register(x86_reg_encoding_to_enum(decoding.rm));
+                    set_register(x86_reg_encoding_to_enum(decoding.rm), val);
                 } else {
                     uint64_t addr = calculate_effective_address(decoding, rip + 2);
                     uint64_t val = ~read_qword(addr);
@@ -48,7 +48,7 @@ int X86CPUVM::execute_logical(uint64_t rip) {
                 uint64_t dest_val;
                 
                 if (!decoding.is_memory_operand) {
-                    dest_val = get_register(static_cast<X86Reg>(decoding.rm));
+                    dest_val = get_register(x86_reg_encoding_to_enum(decoding.rm));
                 } else {
                     uint64_t addr = calculate_effective_address(decoding, rip + 2);
                     dest_val = read_qword(addr);
@@ -58,7 +58,7 @@ int X86CPUVM::execute_logical(uint64_t rip) {
                 update_flags_arithmetic(result, 0, dest_val, true);
                 
                 if (!decoding.is_memory_operand) {
-                    set_register(static_cast<X86Reg>(decoding.rm), result);
+                    set_register(x86_reg_encoding_to_enum(decoding.rm), result);
                 } else {
                     write_qword(calculate_effective_address(decoding, rip + 2), result);
                 }
@@ -194,7 +194,7 @@ int X86CPUVM::execute_call_ret(uint64_t rip) {
             uint64_t target_addr;
             
             if (!decoding.is_memory_operand) {
-                target_addr = get_register(static_cast<X86Reg>(decoding.rm));
+                target_addr = get_register(x86_reg_encoding_to_enum(decoding.rm));
             } else {
                 uint64_t addr = calculate_effective_address(decoding, rip + 2);
                 target_addr = read_qword(addr);
@@ -209,9 +209,9 @@ int X86CPUVM::execute_call_ret(uint64_t rip) {
             uint64_t dest_val;
             
             if (!decoding.is_memory_operand) {
-                dest_val = get_register(static_cast<X86Reg>(decoding.rm));
+                dest_val = get_register(x86_reg_encoding_to_enum(decoding.rm));
                 uint64_t result = dest_val - 1;
-                set_register(static_cast<X86Reg>(decoding.rm), result);
+                set_register(x86_reg_encoding_to_enum(decoding.rm), result);
                 update_flags_arithmetic(result, dest_val, 1, true);
             } else {
                 uint64_t addr = calculate_effective_address(decoding, rip + 2);
@@ -225,7 +225,7 @@ int X86CPUVM::execute_call_ret(uint64_t rip) {
             uint64_t target_addr;
             
             if (!decoding.is_memory_operand) {
-                target_addr = get_register(static_cast<X86Reg>(decoding.rm));
+                target_addr = get_register(x86_reg_encoding_to_enum(decoding.rm));
             } else {
                 uint64_t addr = calculate_effective_address(decoding, rip + 2);
                 target_addr = read_qword(addr);
@@ -237,7 +237,7 @@ int X86CPUVM::execute_call_ret(uint64_t rip) {
             uint64_t src_val;
             
             if (!decoding.is_memory_operand) {
-                src_val = get_register(static_cast<X86Reg>(decoding.rm));
+                src_val = get_register(x86_reg_encoding_to_enum(decoding.rm));
             } else {
                 uint64_t addr = calculate_effective_address(decoding, rip + 2);
                 src_val = read_qword(addr);

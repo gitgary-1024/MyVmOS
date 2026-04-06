@@ -13,30 +13,42 @@ X86CPUVM::ModRMDecoding X86CPUVM::decode_modrm(uint64_t rip, int& instruction_le
     
     instruction_length = 1;  // ModR/M 字节本身
     
-    // SIB 字节（简化处理，暂不支持）
+    // SIB 字节处理
     decoding.has_sib = false;
+    if (decoding.mod != 3 && decoding.rm == 4) {
+        // 存在 SIB 字节
+        decoding.has_sib = true;
+        decoding.sib_byte = read_byte(rip + 1);
+        decoding.scale = (decoding.sib_byte >> 6) & 0x3;
+        decoding.index = (decoding.sib_byte >> 3) & 0x7;
+        decoding.base = decoding.sib_byte & 0x7;
+        instruction_length += 1;  // SIB 字节
+    }
     
     // 位移计算
     if (decoding.mod == 0 && decoding.rm == 5) {
         // [disp32]
         decoding.has_displacement = true;
         decoding.displacement_size = 32;
-        decoding.memory_address = read_dword(rip + 1);
+        decoding.displacement_value = static_cast<int64_t>(read_dword(rip + instruction_length));
         instruction_length += 4;
     } else if (decoding.mod == 1) {
         // [reg + disp8]
         decoding.has_displacement = true;
         decoding.displacement_size = 8;
+        decoding.displacement_value = static_cast<int64_t>(static_cast<int8_t>(read_byte(rip + instruction_length)));
         instruction_length += 1;
-    } else if (decoding.mod == 2 || (decoding.mod == 0 && decoding.rm != 5)) {
-        // [reg + disp32] 或 [reg]
+    } else if (decoding.mod == 2) {
+        // [reg + disp32]
         decoding.has_displacement = true;
         decoding.displacement_size = 32;
+        decoding.displacement_value = static_cast<int64_t>(read_dword(rip + instruction_length));
         instruction_length += 4;
     }
+    // mod == 0 && rm != 5: [reg] 无位移
     
     // 判断是否为内存操作数
-    decoding.is_memory_operand = (decoding.mod == 0) || (decoding.mod == 1) || (decoding.mod == 2);
+    decoding.is_memory_operand = (decoding.mod != 3);  // mod=3 是寄存器寻址
     
     return decoding;
 }
@@ -46,32 +58,87 @@ uint64_t X86CPUVM::calculate_effective_address(const ModRMDecoding& decoding, ui
         return 0;  // 寄存器操作数
     }
     
-    // 简化的有效地址计算
-    // TODO: 完整的 SIB 和解码
+    uint64_t base_addr = 0;
+    uint64_t index_addr = 0;
+    int scale_factor = 1;
     
-    switch (decoding.rm) {
-        case 0:  // [RAX]
-            return get_register(X86Reg::RAX) + (decoding.has_displacement ? decoding.memory_address : 0);
-        case 1:  // [RCX]
-            return get_register(X86Reg::RCX) + (decoding.has_displacement ? decoding.memory_address : 0);
-        case 2:  // [RDX]
-            return get_register(X86Reg::RDX) + (decoding.has_displacement ? decoding.memory_address : 0);
-        case 3:  // [RBX]
-            return get_register(X86Reg::RBX) + (decoding.has_displacement ? decoding.memory_address : 0);
-        case 4:  // [RSP] 或 SIB
-            return get_register(X86Reg::RSP) + (decoding.has_displacement ? decoding.memory_address : 0);
-        case 5:  // [RBP] 或 disp32
-            if (decoding.mod == 0) {
-                return decoding.memory_address;  // 直接地址
+    // 处理 SIB 字节
+    if (decoding.has_sib) {
+        // 基址寄存器
+        if (decoding.base != 5 || decoding.mod != 0) {  // 如果 base=5 且 mod=0，则没有基址
+            switch (decoding.base) {
+                case 0: base_addr = get_register(X86Reg::RAX); break;
+                case 1: base_addr = get_register(X86Reg::RCX); break;
+                case 2: base_addr = get_register(X86Reg::RDX); break;
+                case 3: base_addr = get_register(X86Reg::RBX); break;
+                case 4: base_addr = get_register(X86Reg::RSP); break;
+                case 5: base_addr = get_register(X86Reg::RBP); break;
+                case 6: base_addr = get_register(X86Reg::RSI); break;
+                case 7: base_addr = get_register(X86Reg::RDI); break;
+                default: base_addr = 0; break;
             }
-            return get_register(X86Reg::RBP) + (decoding.has_displacement ? decoding.memory_address : 0);
-        case 6:  // [RSI]
-            return get_register(X86Reg::RSI) + (decoding.has_displacement ? decoding.memory_address : 0);
-        case 7:  // [RDI]
-            return get_register(X86Reg::RDI) + (decoding.has_displacement ? decoding.memory_address : 0);
-        default:
-            return 0;
+        }
+        
+        // 索引寄存器
+        if (decoding.index != 4) {  // index=4 表示无索引寄存器
+            switch (decoding.index) {
+                case 0: index_addr = get_register(X86Reg::RAX); break;
+                case 1: index_addr = get_register(X86Reg::RCX); break;
+                case 2: index_addr = get_register(X86Reg::RDX); break;
+                case 3: index_addr = get_register(X86Reg::RBX); break;
+                case 4: index_addr = 0; break;  // RSP 不能作为索引
+                case 5: index_addr = get_register(X86Reg::RBP); break;
+                case 6: index_addr = get_register(X86Reg::RSI); break;
+                case 7: index_addr = get_register(X86Reg::RDI); break;
+                default: index_addr = 0; break;
+            }
+            // 比例因子: 0->1, 1->2, 2->4, 3->8
+            scale_factor = 1 << decoding.scale;
+        }
+    } else {
+        // 无 SIB 字节，使用 rm 字段作为基址
+        switch (decoding.rm) {
+            case 0:  // [RAX]
+                base_addr = get_register(X86Reg::RAX);
+                break;
+            case 1:  // [RCX]
+                base_addr = get_register(X86Reg::RCX);
+                break;
+            case 2:  // [RDX]
+                base_addr = get_register(X86Reg::RDX);
+                break;
+            case 3:  // [RBX]
+                base_addr = get_register(X86Reg::RBX);
+                break;
+            case 4:  // [RSP] - 不应该到达这里，因为 rm=4 应该有 SIB
+                base_addr = get_register(X86Reg::RSP);
+                break;
+            case 5:  // [RBP] 或 disp32
+                if (decoding.mod == 0) {
+                    // 直接地址（无基址寄存器）
+                    return static_cast<uint64_t>(decoding.displacement_value);
+                }
+                base_addr = get_register(X86Reg::RBP);
+                break;
+            case 6:  // [RSI]
+                base_addr = get_register(X86Reg::RSI);
+                break;
+            case 7:  // [RDI]
+                base_addr = get_register(X86Reg::RDI);
+                break;
+            default:
+                return 0;
+        }
     }
+    
+    // 计算最终地址: base + index * scale + displacement
+    uint64_t effective_addr = base_addr + (index_addr * scale_factor);
+    
+    if (decoding.has_displacement) {
+        effective_addr += static_cast<uint64_t>(decoding.displacement_value);
+    }
+    
+    return effective_addr;
 }
 
 // ===== 主解码执行函数 =====
@@ -126,6 +193,9 @@ int X86CPUVM::decode_and_execute() {
         // ===== 算术运算 =====
         case 0x00: case 0x01: case 0x02: case 0x03:  // ADD
         case 0x28: case 0x29: case 0x2A: case 0x2B:  // SUB
+        case 0x38: case 0x39: case 0x3A: case 0x3B:  // CMP
+        case 0x83:  // ADD/SUB/CMP r/m32, imm8
+        case 0xFF:  // INC/DEC/CALL/JMP (Group 5)
             return prefix_bytes + execute_arithmetic(rip);  // ✅ 加上前缀字节数
         
         // ===== 逻辑运算 =====
@@ -148,7 +218,7 @@ int X86CPUVM::decode_and_execute() {
         
         // ===== CALL/RET =====
         case 0xE8:  // CALL rel32
-        case 0xFF:  // CALL/RET (需要 ModR/M 解码)
+        // case 0xFF(已经在139行出现了):  // CALL/RET (需要 ModR/M 解码)
             return prefix_bytes + execute_call_ret(rip);  // ✅ 加上前缀字节数
         
         // ===== 栈操作 =====
@@ -160,6 +230,8 @@ int X86CPUVM::decode_and_execute() {
         case 0xF5:  // CMC
         case 0xF8:  // CLC
         case 0xF9:  // STC
+        case 0xFA:  // CLI
+        case 0xFB:  // STI
             return prefix_bytes + execute_flag_ops(rip);  // ✅ 加上前缀字节数
         
         // ===== 中断指令 =====
@@ -202,7 +274,9 @@ int X86CPUVM::decode_and_execute() {
         default:
             std::cerr << "[X86VM-" << vm_id_ << "] Unknown opcode: 0x" 
                       << std::hex << static_cast<int>(first_byte) << std::dec
-                      << " at RIP=0x" << get_rip() << std::endl;
+                      << " at RIP=0x" << get_rip() 
+                      << " (local rip=0x" << rip << ")" << std::endl;
+            std::cerr.flush();
             
             // 触发未定义指令异常（中断向量 #UD = 6）
             trigger_interrupt(6);

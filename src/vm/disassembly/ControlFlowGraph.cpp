@@ -187,7 +187,35 @@ BasicBlock ControlFlowGraph::create_basic_block(uint64_t start_addr,
         }
         
         // 判断指令类型并决定下一步
-        if (is_unconditional_jump(insn.get())) {
+        if (CapstoneDisassembler::is_call(insn.get())) {
+            // ✅ CALL 指令：基本块终止，有两个后继
+            block.is_terminated = true;
+            
+            // 提取调用目标
+            uint64_t target = extract_jump_target(insn.get(), current_addr);
+            if (target < code_size_) {
+                tracker_.mark_as_jump_target(target);
+                pending_entries_.insert(target);
+                pending_edges[start_addr].push_back(target);  // 记录边
+                
+                std::cout << "    [CALL] Call to 0x" 
+                          << std::hex << target << std::dec << std::endl;
+            }
+            
+            // Fall-through：CALL 后的下一条指令
+            uint64_t fallthrough = current_addr + insn->size;
+            if (fallthrough < code_size_) {
+                tracker_.mark_as_jump_target(fallthrough);
+                pending_entries_.insert(fallthrough);
+                pending_edges[start_addr].push_back(fallthrough);  // 记录边
+                
+                std::cout << "    [FALLTHROUGH] Return address at 0x" 
+                          << std::hex << fallthrough << std::dec << std::endl;
+            }
+            
+            should_continue = false;
+            
+        } else if (is_unconditional_jump(insn.get())) {
             // 无条件跳转：基本块终止
             block.is_terminated = true;
             

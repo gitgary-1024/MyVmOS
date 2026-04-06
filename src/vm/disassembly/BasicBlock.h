@@ -18,9 +18,21 @@ struct SimpleInstruction {
     std::string mnemonic;  // 助记符（如 "MOV", "ADD"）
     std::string operands;  // 操作数（如 "RAX, RBX"）
     
-    SimpleInstruction() : address(0), size(0) {}
+    // Capstone 详细数据支持
+    void* capstone_insn;   // Capstone cs_insn 指针（void* 避免头文件依赖）
+    bool has_capstone_data; // 标记是否有 Capstone 详细数据
+    
+    SimpleInstruction() 
+        : address(0), size(0), capstone_insn(nullptr), has_capstone_data(false) {}
     SimpleInstruction(uint64_t addr, uint16_t sz, const std::string& mnem, const std::string& ops = "")
-        : address(addr), size(sz), mnemonic(mnem), operands(ops) {}
+        : address(addr), size(sz), mnemonic(mnem), operands(ops), 
+          capstone_insn(nullptr), has_capstone_data(false) {}
+    
+    ~SimpleInstruction() {
+        // ⚠️ 注意：Capstone 内存需要手动管理
+        // 如果需要释放，请在包含 capstone.h 后调用 cs_free
+        // 这里不自动释放，避免头文件依赖问题
+    }
 };
 
 /**

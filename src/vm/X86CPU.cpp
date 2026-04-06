@@ -1,5 +1,6 @@
 #include "X86CPU.h"
 #include "disassembly/ControlFlowGraph.h"  // CFG 支持
+#include "disassembly/CapstoneDisassembler.h"  // CapstoneDisassembler 支持
 #include <iostream>
 #include <cstring>
 #include <iomanip>
@@ -16,6 +17,7 @@ X86CPUVM::X86CPUVM(uint64_t vm_id, const X86VMConfig& config)
     , interrupt_pending_(false)
     , total_instructions_(0)
     , total_cycles_(0)
+    , debug_logging_enabled_(false)  // 默认关闭调试日志
     , cfg_(nullptr)  // 初始化 CFG 指针
 {
     // 初始化寄存器
@@ -85,23 +87,51 @@ bool X86CPUVM::execute_instruction() {
         interrupt_pending_ = false;
     }
     
-    // 解码并执行指令
+    // ✅ 尝试执行整个基本块（如果 CFG 可用）
+    int executed = execute_basic_block();
+    
+    if (executed > 0) {
+        total_instructions_ += executed;
+        total_cycles_ += executed;  // 简化计算
+        
+        // 🔍 调试日志输出
+        if (debug_logging_enabled_) {
+            std::cout << "[BLOCK] Executed " << executed << " instructions, RIP=0x" 
+                      << std::hex << std::setw(16) << std::setfill('0') << get_rip() << std::endl;
+            disassemble_current();
+        } else if (on_instruction_executed_) {
+            disassemble_current();
+        }
+        
+        return true;
+    }
+    
+    // ⚠️ 回退到单指令执行（CFG 不可用或执行失败）
+    uint64_t old_rip = get_rip();  // ✅ 保存旧的 RIP
     int instruction_length = decode_and_execute();
     
     if (instruction_length > 0) {
         total_instructions_++;
-        total_cycles_ += instruction_length;  // 简化的周期计算
+        total_cycles_ += instruction_length;
         
-        // 更新 RIP
-        set_rip(get_rip() + instruction_length);
+        // ✅ 只有当 RIP 没有被指令内部修改时，才手动更新
+        if (get_rip() == old_rip) {
+            set_rip(get_rip() + instruction_length);
+        }
         
-        // 调试回调
-        if (on_instruction_executed_) {
+        // 🔍 调试日志输出
+        if (debug_logging_enabled_) {
+            std::cout << "[INST] RIP=0x" << std::hex << std::setw(16) << std::setfill('0') << old_rip
+                      << " | Length=" << std::dec << instruction_length
+                      << " | NewRIP=0x" << std::hex << std::setw(16) << std::setfill('0') << get_rip()
+                      << std::endl;
+            disassemble_current();
+        } else if (on_instruction_executed_) {
             disassemble_current();
         }
     }
     
-    return instruction_length > 0;  // 返回是否成功执行
+    return instruction_length > 0;
 }
 
 void X86CPUVM::run_loop() {
@@ -421,4 +451,128 @@ void X86CPUVM::build_cfg(uint64_t entry_addr) {
     std::cout << "  - Total blocks: " << stats.total_blocks << std::endl;
     std::cout << "  - Total edges: " << stats.total_edges << std::endl;
     std::cout << "  - Entry points: " << stats.entry_points.size() << std::endl;
+}
+
+// ===== CFG 查询接口实现 =====
+
+const void* X86CPUVM::get_basic_block_at(uint64_t rip) const {
+    if (!cfg_) return nullptr;
+    
+    auto* cfg = static_cast<disassembly::ControlFlowGraph*>(cfg_);
+    return cfg->get_block(rip);
+}
+
+size_t X86CPUVM::get_block_instruction_count(uint64_t block_addr) const {
+    if (!cfg_) return 0;
+    
+    auto* cfg = static_cast<disassembly::ControlFlowGraph*>(cfg_);
+    const auto* block = cfg->get_block(block_addr);
+    
+    if (!block) return 0;
+    return block->instructions.size();
+}
+
+std::vector<uint64_t> X86CPUVM::get_block_successors(uint64_t block_addr) const {
+    std::vector<uint64_t> successors;
+    
+    if (!cfg_) return successors;
+    
+    auto* cfg = static_cast<disassembly::ControlFlowGraph*>(cfg_);
+    const auto* block = cfg->get_block(block_addr);
+    
+    if (!block) return successors;
+    
+    for (const auto& succ_addr : block->successors) {
+        successors.push_back(succ_addr);
+    }
+    
+    return successors;
+}
+
+bool X86CPUVM::is_jump_target(uint64_t addr) const {
+    if (!cfg_) return false;
+    
+    auto* cfg = static_cast<disassembly::ControlFlowGraph*>(cfg_);
+    return cfg->has_block(addr);
+}
+
+void X86CPUVM::print_cfg_summary() const {
+    if (!cfg_) {
+        std::cout << "[X86VM-" << get_vm_id() << "] No CFG available." << std::endl;
+        return;
+    }
+    
+    auto* cfg = static_cast<disassembly::ControlFlowGraph*>(cfg_);
+    
+    std::cout << "\n===== CFG Summary for VM-" << get_vm_id() << " =====" << std::endl;
+    cfg->print_summary();
+    std::cout << "==============================================\n" << std::endl;
+}
+
+// ===== 调试日志控制 =====
+void X86CPUVM::set_debug_logging(bool enable) {
+    debug_logging_enabled_ = enable;
+    if (enable) {
+        std::cout << "[DEBUG] Instruction execution logging ENABLED" << std::endl;
+    } else {
+        std::cout << "[DEBUG] Instruction execution logging DISABLED" << std::endl;
+    }
+}
+
+// ===== CFG 辅助方法实现 =====
+
+const void* X86CPUVM::get_current_basic_block() const {
+    if (!cfg_) return nullptr;
+    
+    auto* cfg = static_cast<disassembly::ControlFlowGraph*>(cfg_);
+    return cfg->get_block(get_rip());
+}
+
+int X86CPUVM::execute_basic_block() {
+    // 获取当前基本块
+    const auto* block = static_cast<const disassembly::BasicBlock*>(get_current_basic_block());
+    if (!block) {
+        return -1;  // 不在任何基本块中，回退到单指令执行
+    }
+    
+    int executed_count = 0;
+    
+    // 执行基本块中的所有指令
+    for (size_t i = 0; i < block->instructions.size(); i++) {
+        const auto& insn = block->instructions[i];
+        
+        // 检查是否到达该指令的地址
+        if (get_rip() != insn->address) {
+            break;  // 可能发生了跳转
+        }
+        
+        // 解码并执行指令
+        int instr_len = decode_and_execute();
+        if (instr_len <= 0) {
+            return executed_count;  // 执行失败
+        }
+        
+        executed_count++;
+        
+        // 检查是否是分支指令（跳转、CALL、RET）
+        const std::string& mnem = insn->mnemonic;
+        bool is_branch = (mnem == "jmp" || mnem == "je" || mnem == "jne" || 
+                          mnem == "jz" || mnem == "jnz" || mnem == "ja" || mnem == "jb" ||
+                          mnem == "jae" || mnem == "jbe" || mnem == "jc" || mnem == "jnc" ||
+                          mnem == "jo" || mnem == "jno" || mnem == "js" || mnem == "jns" ||
+                          mnem == "jp" || mnem == "jnp" || mnem == "jl" || mnem == "jle" ||
+                          mnem == "jg" || mnem == "jge" || mnem == "call" || mnem == "ret");
+        
+        // 如果不是分支指令，才手动更新 RIP
+        if (!is_branch) {
+            set_rip(get_rip() + instr_len);
+        }
+        
+        // 如果是分支指令且基本块已标记为终止，停止执行
+        if (is_branch && block->is_terminated) {
+            break;
+        }
+    }
+    
+    return executed_count;
 }

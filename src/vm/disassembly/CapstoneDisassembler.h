@@ -52,6 +52,11 @@ public:
     static bool is_conditional_jump(const SimpleInstruction* insn);
     
     /**
+     * @brief 判断是否为 CALL 指令
+     */
+    static bool is_call(const SimpleInstruction* insn);
+    
+    /**
      * @brief 判断是否为终止指令
      */
     static bool is_terminator(const SimpleInstruction* insn);

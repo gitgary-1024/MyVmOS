@@ -1,0 +1,69 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "type": "shell",
+      "label": "Build test_x86vm_branch_prediction",
+      "command": "D:\\winlibs-x86_64-posix-seh-gcc-14.2.0-mingw-w64ucrt-12.0.0-r3\\mingw64\\bin\\g++.exe",
+      "args": [
+        "-std=c++17",
+        "-g",
+        "-O0",
+        "-I${workspaceFolder}/include",
+        "${workspaceFolder}/tests/test_x86vm_branch_prediction.cpp",
+        "${workspaceFolder}/lib/libmyos_lib.a",
+        "${workspaceFolder}/src/vm/capstone-Release/lib/libcapstone.a",
+        "-o",
+        "${workspaceFolder}/bin/test_x86vm_branch_prediction.exe"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [
+        "$gcc"
+      ],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "detail": "编译器: g++ with C++17, links myos_lib and capstone"
+    },
+    {
+      "type": "shell",
+      "label": "Build myos_lib (CMake)",
+      "command": "cmake",
+      "args": [
+        "--build",
+        "${workspaceFolder}/build",
+        "--target",
+        "myos_lib"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [
+        "$gcc"
+      ],
+      "group": "build",
+      "detail": "Build myos_lib using CMake"
+    },
+    {
+      "type": "shell",
+      "label": "Rebuild All (CMake)",
+      "command": "cmake",
+      "args": [
+        "--build",
+        "${workspaceFolder}/build",
+        "--clean-first"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [
+        "$gcc"
+      ],
+      "group": "build",
+      "detail": "Clean and rebuild all targets using CMake"
+    }
+  ]
+}

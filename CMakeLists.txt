@@ -114,9 +114,26 @@ target_link_libraries(test_timeout myos_lib Threads::Threads)
 add_executable(test_x86_cpu tests/test_x86_cpu.cpp)
 target_link_libraries(test_x86_cpu myos_lib)
 
+# CFG 集成到 X86CPU VM 测试
+add_executable(test_x86vm_cfg_build tests/test_x86vm_cfg_build.cpp)
+target_link_libraries(test_x86vm_cfg_build myos_lib ${CAPSTONE_LIB_DIR}/libcapstone.a)
+
+add_executable(test_x86vm_block_execution tests/test_x86vm_block_execution.cpp)
+target_link_libraries(test_x86vm_block_execution myos_lib ${CAPSTONE_LIB_DIR}/libcapstone.a)
+
+add_executable(test_x86vm_branch_prediction tests/test_x86vm_branch_prediction.cpp)
+target_link_libraries(test_x86vm_branch_prediction myos_lib ${CAPSTONE_LIB_DIR}/libcapstone.a)
+
+add_executable(test_x86vm_full_integration tests/test_x86vm_full_integration.cpp)
+target_link_libraries(test_x86vm_full_integration myos_lib ${CAPSTONE_LIB_DIR}/libcapstone.a)
+
 # x86 简单测试
 add_executable(test_x86_simple tests/test_x86_simple.cpp)
 target_link_libraries(test_x86_simple myos_lib)
+
+# ModR/M 指令修复测试
+add_executable(test_modrm_fixes tests/test_modrm_fixes.cpp)
+target_link_libraries(test_modrm_fixes myos_lib ${CAPSTONE_LIB_DIR}/libcapstone.a)
 
 # Opcode 0x00 修复验证
 add_executable(test_opcode_0x00 tests/test_opcode_0x00.cpp)

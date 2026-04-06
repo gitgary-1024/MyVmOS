@@ -19,6 +19,30 @@ enum class X86Reg {
 
 constexpr size_t NUM_X86_REGS = 18;
 
+// ===== x86 寄存器编码到 X86Reg 枚举的映射 =====
+// x86 寄存器编码顺序: 0=RAX, 1=RCX, 2=RDX, 3=RBX, 4=RSP, 5=RBP, 6=RSI, 7=RDI
+inline X86Reg x86_reg_encoding_to_enum(uint8_t encoding) {
+    switch (encoding) {
+        case 0: return X86Reg::RAX;
+        case 1: return X86Reg::RCX;
+        case 2: return X86Reg::RDX;
+        case 3: return X86Reg::RBX;
+        case 4: return X86Reg::RSP;
+        case 5: return X86Reg::RBP;
+        case 6: return X86Reg::RSI;
+        case 7: return X86Reg::RDI;
+        case 8: return X86Reg::R8;
+        case 9: return X86Reg::R9;
+        case 10: return X86Reg::R10;
+        case 11: return X86Reg::R11;
+        case 12: return X86Reg::R12;
+        case 13: return X86Reg::R13;
+        case 14: return X86Reg::R14;
+        case 15: return X86Reg::R15;
+        default: return X86Reg::RAX;  // 默认返回 RAX
+    }
+}
+
 // ===== RFLAGS 标志位 =====
 constexpr uint64_t FLAG_CF = (1ULL << 0);   // 进位标志
 constexpr uint64_t FLAG_PF = (1ULL << 2);   // 奇偶标志
@@ -126,14 +150,67 @@ public:
     void dump_memory(uint64_t addr, size_t len) const;
     void disassemble_current() const;  // 反汇编当前指令
     
+    // 调试日志控制
+    void set_debug_logging(bool enable);
+    bool is_debug_logging_enabled() const { return debug_logging_enabled_; }
+    
     // ===== CFG 分析接口 =====
     void build_cfg(uint64_t entry_addr);  // 构建控制流图
     bool has_cfg() const { return cfg_ != nullptr; }
     const void* get_cfg() const { return cfg_; }  // 返回 CFG 指针（用于外部查询）
     
+    // ===== CFG 查询接口 =====
+    
+    /**
+     * @brief 获取当前 RIP 所在的基本块
+     * @param rip 指令地址
+     * @return 基本块指针，如果不存在返回 nullptr
+     */
+    const void* get_basic_block_at(uint64_t rip) const;
+    
+    /**
+     * @brief 获取基本块的指令数量
+     * @param block_addr 基本块起始地址
+     * @return 指令数量
+     */
+    size_t get_block_instruction_count(uint64_t block_addr) const;
+    
+    /**
+     * @brief 获取基本块的后继地址列表
+     * @param block_addr 基本块起始地址
+     * @return 后继地址列表
+     */
+    std::vector<uint64_t> get_block_successors(uint64_t block_addr) const;
+    
+    /**
+     * @brief 检查地址是否是跳转目标
+     * @param addr 要检查的地址
+     * @return true 如果是跳转目标
+     */
+    bool is_jump_target(uint64_t addr) const;
+    
+    /**
+     * @brief 打印当前 CFG 摘要
+     */
+    void print_cfg_summary() const;
+    
 private:
     // ===== x86 指令解码与执行 =====
     int decode_and_execute();
+    
+    // ===== CFG 辅助方法 =====
+    
+    /**
+     * @brief 尝试执行整个基本块（如果 CFG 可用）
+     * @return 执行的指令数，失败返回 -1
+     */
+    int execute_basic_block();
+    
+    /**
+     * @brief 获取当前基本块
+     * @return 基本块指针
+     */
+    const void* get_current_basic_block() const;
     
     // 指令执行函数（按功能分类）
     int execute_mov(uint64_t rip);
@@ -154,8 +231,13 @@ private:
         uint8_t reg;
         uint8_t rm;
         bool has_sib;
+        uint8_t sib_byte;  // SIB 字节
+        uint8_t scale;     // 比例因子 (0, 1, 2, 3) -> (1, 2, 4, 8)
+        uint8_t index;     // 索引寄存器
+        uint8_t base;      // 基址寄存器
         bool has_displacement;
         int displacement_size;  // 0, 8, 32
+        int64_t displacement_value;  // 位移值（有符号）
         bool is_memory_operand;
         uint64_t memory_address;  // 如果是内存操作数，计算后的地址
     };
@@ -203,6 +285,9 @@ private:
     
     // 调试回调
     std::function<void(uint64_t rip, const std::string& instruction)> on_instruction_executed_;
+    
+    // 调试日志配置
+    bool debug_logging_enabled_;  // 是否启用指令执行日志
     
     // CFG 分析（可选）
     void* cfg_;  // ControlFlowGraph*，使用 void* 避免头文件依赖

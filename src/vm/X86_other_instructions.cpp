@@ -83,7 +83,7 @@ int X86CPUVM::execute_branch(uint64_t rip) {
     // JMP rel8 (0xEB)
     if (opcode == 0xEB) {
         int8_t offset = read_byte(rip + 1);
-        set_rip(get_rip() + 2 + offset);  // 显式设置 RIP，与 JMP rel32 保持一致
+        set_rip(rip + 2 + offset);  // ✅ 使用参数 rip，而不是 get_rip()
         return 2;
     }
     
@@ -91,7 +91,7 @@ int X86CPUVM::execute_branch(uint64_t rip) {
     if (opcode == 0xE9) {
         int32_t offset = read_dword(rip + 1);
         int instr_len = 5;
-        set_rip(get_rip() + instr_len + offset);
+        set_rip(rip + instr_len + offset);  // ✅ 使用参数 rip
         return instr_len;
     }
     
@@ -126,8 +126,17 @@ int X86CPUVM::execute_branch(uint64_t rip) {
             case 0xF: take_branch = !zf && (sf == of); break;  // JG/JNLE
         }
         
+        // 🔍 调试输出
+        if (debug_logging_enabled_) {
+            std::cout << "[BRANCH] Opcode=0x" << std::hex << static_cast<int>(opcode) 
+                      << " Cond=" << std::dec << static_cast<int>(condition)
+                      << " ZF=" << zf << " TakeBranch=" << take_branch
+                      << " Offset=" << static_cast<int>(offset)
+                      << " Target=0x" << std::hex << (rip + 2 + offset) << std::dec << std::endl;
+        }
+        
         if (take_branch) {
-            set_rip(get_rip() + 2 + offset);
+            set_rip(rip + 2 + offset);  // ✅ 使用参数 rip，而不是 get_rip()
         } else {
             return 2;
         }
@@ -140,7 +149,7 @@ int X86CPUVM::execute_branch(uint64_t rip) {
         uint64_t rcx = get_register(X86Reg::RCX);
         
         if ((rcx & 0xFFFFFFFF) == 0) {  // 检查低 32 位
-            set_rip(get_rip() + 2 + offset);
+            set_rip(rip + 2 + offset);  // ✅ 使用参数 rip
         } else {
             return 2;
         }
@@ -156,13 +165,20 @@ int X86CPUVM::execute_branch(uint64_t rip) {
 int X86CPUVM::execute_call_ret(uint64_t rip) {
     uint8_t opcode = read_byte(rip);
     
+    // RET (0xC3)
+    if (opcode == 0xC3) {
+        uint64_t ret_addr = pop();
+        set_rip(ret_addr);
+        return 1;
+    }
+    
     // CALL rel32 (0xE8)
     if (opcode == 0xE8) {
         int32_t offset = read_dword(rip + 1);
-        uint64_t ret_addr = get_rip() + 5;
+        uint64_t ret_addr = rip + 5;  // ✅ 使用参数 rip
         
         push(ret_addr);
-        set_rip(get_rip() + 5 + offset);
+        set_rip(rip + 5 + offset);  // ✅ 使用参数 rip
         
         return 5;
     }
@@ -188,6 +204,22 @@ int X86CPUVM::execute_call_ret(uint64_t rip) {
             push(ret_addr);
             set_rip(target_addr);
             
+            return 2 + len;
+        } else if (reg_field == 0x1) {  // DEC r/m64
+            uint64_t dest_val;
+            
+            if (!decoding.is_memory_operand) {
+                dest_val = get_register(static_cast<X86Reg>(decoding.rm));
+                uint64_t result = dest_val - 1;
+                set_register(static_cast<X86Reg>(decoding.rm), result);
+                update_flags_arithmetic(result, dest_val, 1, true);
+            } else {
+                uint64_t addr = calculate_effective_address(decoding, rip + 2);
+                dest_val = read_qword(addr);
+                uint64_t result = dest_val - 1;
+                write_qword(addr, result);
+                update_flags_arithmetic(result, dest_val, 1, true);
+            }
             return 2 + len;
         } else if (reg_field == 0x4) {  // JMP near
             uint64_t target_addr;
@@ -258,6 +290,14 @@ int X86CPUVM::execute_flag_ops(uint64_t rip) {
         
         case 0xF9:  // STC (Set Carry Flag)
             set_flag(FLAG_CF, true);
+            return 1;
+        
+        case 0xFA:  // CLI (Clear Interrupt Flag)
+            set_flag(FLAG_IF, false);
+            return 1;
+        
+        case 0xFB:  // STI (Set Interrupt Flag)
+            set_flag(FLAG_IF, true);
             return 1;
         
         default:
